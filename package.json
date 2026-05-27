@@ -4,13 +4,18 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "ci": "payload migrate && next build",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "migrate:create": "payload migrate:create",
+    "migrate": "payload migrate"
   },
   "dependencies": {
+    "@payloadcms/db-vercel-postgres": "^3.85.0",
     "@payloadcms/db-sqlite": "^3.85.0",
     "@payloadcms/next": "^3.85.0",
+    "@payloadcms/storage-vercel-blob": "^3.85.0",
     "dropbox": "^10.34.0",
     "next": "16.2.6",
     "payload": "^3.85.0",

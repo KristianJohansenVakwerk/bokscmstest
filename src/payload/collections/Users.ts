@@ -6,12 +6,18 @@ export const Users: CollectionConfig = {
   admin: {
     useAsTitle: "email",
   },
-  // Keep access permissive for first boot; lock down later for production.
   access: {
-    read: () => true,
-    create: () => true,
-    update: () => true,
-    delete: () => true,
+    read: ({ req }) => Boolean(req.user),
+    create: async ({ req }) => {
+      const { totalDocs } = await req.payload.count({
+        collection: "users",
+      });
+
+      if (totalDocs === 0) return true;
+      return Boolean(req.user);
+    },
+    update: ({ req }) => Boolean(req.user),
+    delete: ({ req }) => Boolean(req.user),
   },
   fields: [
     {
