@@ -31,13 +31,51 @@ function shouldUsePostgres(): boolean {
 function getPayloadSecret(): string {
   const secret = process.env.PAYLOAD_SECRET;
   if (secret && secret.length > 0) return secret;
-  if (process.env.NODE_ENV === "production") {
+  // Vercel "preview" and "production" builds run with NODE_ENV=production.
+  // Only hard-require PAYLOAD_SECRET at runtime when actually deployed on Vercel.
+  if (process.env.NODE_ENV === "production" && process.env.VERCEL === "1") {
     throw new Error("PAYLOAD_SECRET is required in production");
   }
   return "dev-payload-secret-change-me";
 }
 
+function getPostgresConnectionString(): string {
+  const url =
+    process.env.POSTGRES_URL ||
+    process.env.DATABASE_URL ||
+    // Neon/Vercel Postgres integrations frequently prefix vars
+    process.env.DB_POSTGRES_URL ||
+    process.env.DB_POSTGRES_URL_NON_POOLING ||
+    process.env.DB_POSTGRES_PRISMA_URL ||
+    process.env.DB_DATABASE_URL ||
+    process.env.DB_DATABASE_URL_UNPOOLED;
+
+  if (url && url.length > 0) return url;
+
+  throw new Error(
+    "Missing Postgres connection string. Set POSTGRES_URL or DATABASE_URL (or DB_POSTGRES_URL from Neon integration) in Vercel."
+  );
+}
+
 export default buildConfig({
+  bin: [
+    {
+      key: "export:sqlite",
+      scriptPath: path.resolve(dirname, "scripts/bin/export-sqlite.cjs"),
+    },
+    {
+      key: "migrate:media:blob",
+      scriptPath: path.resolve(dirname, "scripts/bin/migrate-media-to-blob.cjs"),
+    },
+    {
+      key: "import:neon",
+      scriptPath: path.resolve(dirname, "scripts/bin/import-to-neon.cjs"),
+    },
+    {
+      key: "verify:neon",
+      scriptPath: path.resolve(dirname, "scripts/bin/verify-neon.cjs"),
+    },
+  ],
   admin: {
     user: Users.slug,
     meta: {
@@ -60,18 +98,18 @@ export default buildConfig({
   },
   db: shouldUsePostgres()
     ? vercelPostgresAdapter({
-        connectionString: (() => {
-          const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
-          if (url && url.length > 0) return url;
-          throw new Error(
-            "Missing Postgres connection string. Set DATABASE_URL or POSTGRES_URL in Vercel."
-          );
-        })(),
+        connectionString: getPostgresConnectionString(),
+        push:
+          process.env.PAYLOAD_DB_PUSH === "true" ||
+          (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1"),
       })
     : sqliteAdapter({
         client: {
           url: process.env.DATABASE_URL || "file:./payload.db",
         },
+        // Avoid schema push on existing SQLite DBs unless explicitly enabled.
+        // (Some environments already have the schema and push can fail on re-creating indexes.)
+        push: process.env.PAYLOAD_SQLITE_PUSH === "true",
       }),
   plugins: shouldUsePostgres()
     ? [
