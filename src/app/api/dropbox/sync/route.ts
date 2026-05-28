@@ -145,6 +145,37 @@ async function deletePostAndOrphanedMedia(payload: PayloadInstance, postId: stri
   return { deletedMedia };
 }
 
+async function deleteOrphanedMedia(payload: PayloadInstance) {
+  let deleted = 0;
+  let kept = 0;
+  let errors = 0;
+
+  let page = 1;
+  while (true) {
+    const mediaPage = await payload.find({
+      collection: "media",
+      limit: 100,
+      page,
+      overrideAccess: true,
+    });
+
+    for (const doc of mediaPage.docs as Array<{ id: unknown }>) {
+      try {
+        const didDelete = await deleteMediaIfOrphaned(payload, String(doc.id));
+        if (didDelete) deleted += 1;
+        else kept += 1;
+      } catch {
+        errors += 1;
+      }
+    }
+
+    if (!mediaPage.hasNextPage) break;
+    page += 1;
+  }
+
+  return { deleted, kept, errors };
+}
+
 async function listAllDropboxPosts(payload: PayloadInstance) {
   const docs: Array<{ id: unknown; dropbox?: { pathLower?: string | null } | null }> = [];
   let page = 1;
@@ -254,6 +285,7 @@ export async function POST(request: Request) {
   const limit = Math.max(0, Number(searchParams.get("limit") ?? "0"));
   const onlyNew = (searchParams.get("onlyNew") ?? "true") !== "false";
   const deleteMissing = (searchParams.get("deleteMissing") ?? "true") !== "false";
+  const gcOrphanedMedia = (searchParams.get("gcOrphanedMedia") ?? "false") === "true";
 
   try {
     const payload = await getPayload({ config });
@@ -302,12 +334,32 @@ export async function POST(request: Request) {
         continue;
       }
 
+      const existingRev =
+        (existing as unknown as { dropbox?: { rev?: string | null } | null })?.dropbox?.rev ?? null;
+      const entryRev = entry.rev ?? null;
+      if (existing && existingRev && entryRev && existingRev === entryRev) {
+        summary.push({
+          pathLower,
+          name,
+          status: "skipped",
+          postId: String(existing.id),
+          reason: "Unchanged (rev match)",
+        });
+        continue;
+      }
+
       try {
         const fileBuffer = await downloadDropboxFile(pathLower);
         const titleBase = stripExtension(name);
         const media = await uploadImageToMedia(payload, fileBuffer, name, titleBase);
 
         if (existing) {
+          const previousMediaId =
+            typeof (existing as unknown as { image?: unknown })?.image === "string" ||
+            typeof (existing as unknown as { image?: unknown })?.image === "number"
+              ? String((existing as unknown as { image?: unknown })?.image)
+              : null;
+
           const updated = await payload.update({
             collection: "posts",
             id: existing.id,
@@ -322,6 +374,10 @@ export async function POST(request: Request) {
             },
             overrideAccess: true,
           });
+
+          if (previousMediaId) {
+            await deleteMediaIfOrphaned(payload, previousMediaId);
+          }
 
           summary.push({
             pathLower,
@@ -415,11 +471,15 @@ export async function POST(request: Request) {
       .filter(assertFileMetadata)
       .filter((entry) => !isImageFile(entry.name)).length;
 
+    const orphanedMediaGC =
+      gcOrphanedMedia && limit === 0 ? await deleteOrphanedMedia(payload) : null;
+
     return NextResponse.json({
       folderPath,
       totalImagesInFolder: imageFiles.length,
       skippedNonImages,
       processed: candidates.length,
+      orphanedMediaGC,
       results: summary,
     });
   } catch (error) {
