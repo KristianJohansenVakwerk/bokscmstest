@@ -11,6 +11,7 @@
     "migrate:create": "payload migrate:create",
     "migrate": "payload migrate",
     "export:sqlite": "payload export:sqlite",
+    "pull:postgres:sqlite": "node ./scripts/pull-postgres-to-sqlite.mjs --force",
     "migrate:media:blob": "payload migrate:media:blob",
     "import:neon": "payload import:neon"
   },

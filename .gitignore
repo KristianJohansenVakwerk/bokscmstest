@@ -38,6 +38,9 @@ payload.db
 backups/
 Untitled
 
+# local Payload uploads
+media/
+
 # vercel
 .vercel
 

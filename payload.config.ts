@@ -17,15 +17,14 @@ const dirname = path.dirname(filename);
 function shouldUsePostgres(): boolean {
   if (process.env.VERCEL === "1") return true;
 
-  const postgresURL = process.env.POSTGRES_URL;
-  if (postgresURL && postgresURL.length > 0) return true;
-
-  const databaseURL = process.env.DATABASE_URL;
-  if (!databaseURL) return false;
-  return (
-    databaseURL.startsWith("postgres://") ||
-    databaseURL.startsWith("postgresql://")
-  );
+  // Local default: prefer SQLite unless explicitly opting into Postgres.
+  // This prevents accidentally pointing local dev at a remote DB via env vars
+  // like POSTGRES_URL / DATABASE_URL (which may exist in checked-in .env files).
+  const explicit =
+    process.env.PAYLOAD_USE_POSTGRES === "1" ||
+    process.env.PAYLOAD_USE_POSTGRES === "true";
+  if (explicit) return true;
+  return false;
 }
 
 function getPayloadSecret(): string {
@@ -64,8 +63,16 @@ export default buildConfig({
       scriptPath: path.resolve(dirname, "scripts/bin/export-sqlite.cjs"),
     },
     {
+      key: "export:postgres",
+      scriptPath: path.resolve(dirname, "scripts/bin/export-postgres.cjs"),
+    },
+    {
       key: "migrate:media:blob",
       scriptPath: path.resolve(dirname, "scripts/bin/migrate-media-to-blob.cjs"),
+    },
+    {
+      key: "import:sqlite",
+      scriptPath: path.resolve(dirname, "scripts/bin/import-to-sqlite.cjs"),
     },
     {
       key: "import:neon",
@@ -97,12 +104,22 @@ export default buildConfig({
     outputFile: path.resolve(dirname, "src/payload/payload-types.ts"),
   },
   db: shouldUsePostgres()
-    ? vercelPostgresAdapter({
-        connectionString: getPostgresConnectionString(),
+    ? (() => {
+        const connectionString = getPostgresConnectionString();
+        // Some Vercel Postgres tooling expects POSTGRES_URL specifically, even when
+        // a connection string is provided elsewhere (e.g. DATABASE_URL / Neon DB_* vars).
+        // Ensure compatibility (also for local scripts that opt into Postgres).
+        if (!process.env.POSTGRES_URL) {
+          process.env.POSTGRES_URL = connectionString;
+        }
+
+        return vercelPostgresAdapter({
+          connectionString,
         push:
           process.env.PAYLOAD_DB_PUSH === "true" ||
           (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1"),
-      })
+        });
+      })()
     : sqliteAdapter({
         client: {
           url: process.env.DATABASE_URL || "file:./payload.db",
