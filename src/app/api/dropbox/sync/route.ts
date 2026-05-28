@@ -22,6 +22,17 @@ function assertFileMetadata(
   return (entry as { ".tag"?: string })[".tag"] === "file";
 }
 
+function isDropboxNotFoundError(error: unknown) {
+  if (!(error instanceof DropboxResponseError)) return false;
+  if (error.status !== 409) return false;
+  try {
+    const serialized = JSON.stringify(error.error ?? {});
+    return serialized.includes("not_found");
+  } catch {
+    return false;
+  }
+}
+
 function stripExtension(filename: string): string {
   const lastDot = filename.lastIndexOf(".");
   if (lastDot <= 0) return filename;
@@ -81,6 +92,42 @@ async function downloadDropboxFile(path: string) {
   const dbx = getDropboxClient();
   const { result } = await dbx.filesDownload({ path });
   return bufferFromDropboxDownloadResult(result);
+}
+
+async function deletePostById(payload: PayloadInstance, id: string) {
+  return payload.delete({
+    collection: "posts",
+    id,
+    overrideAccess: true,
+  });
+}
+
+async function listAllDropboxPosts(payload: PayloadInstance) {
+  const docs: Array<{ id: unknown; dropbox?: { pathLower?: string | null } | null }> = [];
+  let page = 1;
+
+  while (true) {
+    const result = await payload.find({
+      collection: "posts",
+      limit: 100,
+      page,
+      where: {
+        "dropbox.pathLower": {
+          exists: true,
+        },
+      },
+      overrideAccess: true,
+    });
+
+    docs.push(
+      ...(result.docs as Array<{ id: unknown; dropbox?: { pathLower?: string | null } | null }>),
+    );
+
+    if (!result.hasNextPage) break;
+    page += 1;
+  }
+
+  return docs;
 }
 
 async function uploadImageToMedia(
@@ -163,6 +210,7 @@ export async function POST(request: Request) {
   const folderPath = searchParams.get("path") ?? getDropboxFolderPath();
   const limit = Math.max(0, Number(searchParams.get("limit") ?? "0"));
   const onlyNew = (searchParams.get("onlyNew") ?? "true") !== "false";
+  const deleteMissing = (searchParams.get("deleteMissing") ?? "true") !== "false";
 
   try {
     const payload = await getPayload({ config });
@@ -172,11 +220,14 @@ export async function POST(request: Request) {
       return isImageFile(entry.name);
     });
     const candidates = limit > 0 ? imageFiles.slice(0, limit) : imageFiles;
+    const imagePathLowersInFolder = new Set(
+      imageFiles.map((e) => e.path_lower).filter((p): p is string => Boolean(p)),
+    );
 
     const summary: Array<{
       pathLower: string | null;
       name: string;
-      status: "skipped" | "created" | "updated" | "error";
+      status: "skipped" | "created" | "updated" | "deleted" | "error";
       postId?: string;
       mediaId?: string;
       reason?: string;
@@ -226,6 +277,7 @@ export async function POST(request: Request) {
                 rev: entry.rev ?? null,
               },
             },
+            overrideAccess: true,
           });
 
           summary.push({
@@ -253,6 +305,7 @@ export async function POST(request: Request) {
               rev: entry.rev ?? null,
             },
           },
+          overrideAccess: true,
         });
 
         summary.push({
@@ -263,12 +316,47 @@ export async function POST(request: Request) {
           mediaId: String(media.id),
         });
       } catch (error) {
+        if (existing && isDropboxNotFoundError(error)) {
+          await deletePostById(payload, String(existing.id));
+          summary.push({
+            pathLower,
+            name,
+            status: "deleted",
+            postId: String(existing.id),
+            reason: "File missing in Dropbox; deleted corresponding post",
+          });
+          continue;
+        }
+
         const message = error instanceof Error ? error.message : "Failed to sync file";
         summary.push({
           pathLower,
           name,
           status: "error",
           reason: message,
+        });
+      }
+    }
+
+    if (deleteMissing && limit === 0) {
+      const folderPathLower = folderPath.toLowerCase();
+      const allDropboxPosts = await listAllDropboxPosts(payload);
+      const deleteCandidates = allDropboxPosts.filter((post) => {
+        const pathLower = post.dropbox?.pathLower ?? null;
+        if (!pathLower) return false;
+        if (!pathLower.startsWith(folderPathLower)) return false;
+        return !imagePathLowersInFolder.has(pathLower);
+      });
+
+      for (const post of deleteCandidates) {
+        const pathLower = post.dropbox?.pathLower ?? null;
+        await deletePostById(payload, String(post.id));
+        summary.push({
+          pathLower,
+          name: "(missing from folder)",
+          status: "deleted",
+          postId: String(post.id),
+          reason: "Not present in Dropbox folder listing; deleted corresponding post",
         });
       }
     }
