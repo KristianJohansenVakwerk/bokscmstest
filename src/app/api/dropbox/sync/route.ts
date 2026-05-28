@@ -2,6 +2,7 @@ import type { files } from "dropbox";
 import { DropboxResponseError } from "dropbox";
 import { NextResponse } from "next/server";
 import { getPayload } from "payload";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 import config from "@payload-config";
 
@@ -102,12 +103,60 @@ async function uploadImageToMedia(
   });
 }
 
+function verifyDropboxSignatureOrThrow(rawBody: string, signatureHeader: string) {
+  const secret = process.env.DROPBOX_APP_SECRET;
+  if (!secret) {
+    throw new Error("DROPBOX_APP_SECRET is not set");
+  }
+
+  const computedHex = createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
+  const providedHex = signatureHeader.trim().toLowerCase();
+
+  const computed = Buffer.from(computedHex, "utf8");
+  const provided = Buffer.from(providedHex, "utf8");
+
+  if (computed.length !== provided.length || !timingSafeEqual(computed, provided)) {
+    throw new Error("Invalid Dropbox signature");
+  }
+}
+
+// Dropbox webhook registration verifies the endpoint via GET ?challenge=...
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const challenge = searchParams.get("challenge");
+
+  if (!challenge) {
+    return NextResponse.json({ error: "Missing challenge" }, { status: 400 });
+  }
+
+  return new NextResponse(challenge, {
+    status: 200,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+}
+
 export async function POST(request: Request) {
   if (!process.env.DROPBOX_ACCESS_TOKEN) {
     return NextResponse.json(
       { error: "DROPBOX_ACCESS_TOKEN is not set" },
       { status: 401 },
     );
+  }
+
+  // If configured, validate webhook signature so only Dropbox can trigger sync.
+  // (Dropbox signs the raw POST body with HMAC-SHA256 using the app secret.)
+  const signatureHeader = request.headers.get("x-dropbox-signature");
+  if (signatureHeader) {
+    try {
+      const rawBody = await request.text();
+      verifyDropboxSignatureOrThrow(rawBody, signatureHeader);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Signature verification failed";
+      return NextResponse.json({ error: message }, { status: 401 });
+    }
   }
 
   const { searchParams } = new URL(request.url);
