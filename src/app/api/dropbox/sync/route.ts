@@ -102,6 +102,49 @@ async function deletePostById(payload: PayloadInstance, id: string) {
   });
 }
 
+async function deleteMediaIfOrphaned(payload: PayloadInstance, mediaId: string) {
+  const stillUsed = await payload.find({
+    collection: "posts",
+    limit: 1,
+    where: {
+      image: {
+        equals: mediaId,
+      },
+    },
+    overrideAccess: true,
+  });
+
+  if ((stillUsed.docs?.length ?? 0) > 0) return false;
+
+  await payload.delete({
+    collection: "media",
+    id: mediaId,
+    overrideAccess: true,
+  });
+
+  return true;
+}
+
+async function deletePostAndOrphanedMedia(payload: PayloadInstance, postId: string) {
+  const post = await payload.findByID({
+    collection: "posts",
+    id: postId,
+    depth: 0,
+    overrideAccess: true,
+  });
+
+  const mediaId =
+    typeof post?.image === "string" || typeof post?.image === "number"
+      ? String(post.image)
+      : null;
+
+  await deletePostById(payload, postId);
+
+  if (!mediaId) return { deletedMedia: false };
+  const deletedMedia = await deleteMediaIfOrphaned(payload, mediaId);
+  return { deletedMedia };
+}
+
 async function listAllDropboxPosts(payload: PayloadInstance) {
   const docs: Array<{ id: unknown; dropbox?: { pathLower?: string | null } | null }> = [];
   let page = 1;
@@ -317,13 +360,18 @@ export async function POST(request: Request) {
         });
       } catch (error) {
         if (existing && isDropboxNotFoundError(error)) {
-          await deletePostById(payload, String(existing.id));
+          const { deletedMedia } = await deletePostAndOrphanedMedia(
+            payload,
+            String(existing.id),
+          );
           summary.push({
             pathLower,
             name,
             status: "deleted",
             postId: String(existing.id),
-            reason: "File missing in Dropbox; deleted corresponding post",
+            reason: deletedMedia
+              ? "File missing in Dropbox; deleted post + orphaned media"
+              : "File missing in Dropbox; deleted corresponding post",
           });
           continue;
         }
@@ -350,13 +398,15 @@ export async function POST(request: Request) {
 
       for (const post of deleteCandidates) {
         const pathLower = post.dropbox?.pathLower ?? null;
-        await deletePostById(payload, String(post.id));
+        const { deletedMedia } = await deletePostAndOrphanedMedia(payload, String(post.id));
         summary.push({
           pathLower,
           name: "(missing from folder)",
           status: "deleted",
           postId: String(post.id),
-          reason: "Not present in Dropbox folder listing; deleted corresponding post",
+          reason: deletedMedia
+            ? "Not present in Dropbox folder listing; deleted post + orphaned media"
+            : "Not present in Dropbox folder listing; deleted corresponding post",
         });
       }
     }
