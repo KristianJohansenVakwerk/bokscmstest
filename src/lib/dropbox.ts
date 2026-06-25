@@ -38,3 +38,20 @@ export function getDropboxClient(): Dropbox {
 export function resetDropboxClient(): void {
   dropboxClient = null;
 }
+
+/**
+ * True when either a long-lived access token is configured, OR the refresh-token
+ * trio (app key + app secret + refresh token) is present so the SDK can mint
+ * fresh access tokens on demand.
+ */
+export function hasDropboxAuth(): boolean {
+  if (process.env.DROPBOX_ACCESS_TOKEN) return true;
+  return Boolean(
+    process.env.NEXT_PUBLIC_DROPBOX_APP_KEY &&
+      process.env.DROPBOX_APP_SECRET &&
+      process.env.DROPBOX_REFRESH_TOKEN,
+  );
+}
+
+export const DROPBOX_AUTH_MISSING_MESSAGE =
+  "Dropbox auth not configured. Set DROPBOX_REFRESH_TOKEN (plus app key/secret) or DROPBOX_ACCESS_TOKEN.";

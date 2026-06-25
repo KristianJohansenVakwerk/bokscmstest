@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
 
-import { getDropboxClient } from "@/lib/dropbox";
+import { getDropboxClient, hasDropboxAuth } from "@/lib/dropbox";
 
 export async function GET() {
   try {
     const dbx = getDropboxClient();
-    const hasAccessToken = Boolean(process.env.DROPBOX_ACCESS_TOKEN);
 
-    if (!hasAccessToken) {
+    if (!hasDropboxAuth()) {
       return NextResponse.json({
         initialized: true,
         authenticated: false,
         message:
-          "Dropbox SDK is ready with app credentials. Add DROPBOX_ACCESS_TOKEN to call the API.",
+          "Dropbox SDK is ready with app credentials. Add DROPBOX_REFRESH_TOKEN (or DROPBOX_ACCESS_TOKEN) to call the API.",
       });
     }
 

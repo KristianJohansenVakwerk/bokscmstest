@@ -1,13 +1,17 @@
 import { DropboxResponseError } from "dropbox";
 import { NextResponse } from "next/server";
 
-import { getDropboxClient } from "@/lib/dropbox";
+import {
+  DROPBOX_AUTH_MISSING_MESSAGE,
+  getDropboxClient,
+  hasDropboxAuth,
+} from "@/lib/dropbox";
 import { bufferFromDropboxDownloadResult } from "@/lib/dropbox-image";
 
 export async function GET(request: Request) {
-  if (!process.env.DROPBOX_ACCESS_TOKEN) {
+  if (!hasDropboxAuth()) {
     return NextResponse.json(
-      { error: "DROPBOX_ACCESS_TOKEN is not set" },
+      { error: DROPBOX_AUTH_MISSING_MESSAGE },
       { status: 401 },
     );
   }

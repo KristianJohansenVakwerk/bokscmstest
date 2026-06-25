@@ -6,7 +6,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import config from "@payload-config";
 
-import { getDropboxClient } from "@/lib/dropbox";
+import {
+  DROPBOX_AUTH_MISSING_MESSAGE,
+  getDropboxClient,
+  hasDropboxAuth,
+} from "@/lib/dropbox";
 import { getDropboxFolderPath, listDropboxFolder } from "@/lib/dropbox-folder";
 import {
   bufferFromDropboxDownloadResult,
@@ -259,22 +263,10 @@ export async function GET(request: Request) {
   });
 }
 
-function hasDropboxAuth(): boolean {
-  if (process.env.DROPBOX_ACCESS_TOKEN) return true;
-  return Boolean(
-    process.env.NEXT_PUBLIC_DROPBOX_APP_KEY &&
-      process.env.DROPBOX_APP_SECRET &&
-      process.env.DROPBOX_REFRESH_TOKEN,
-  );
-}
-
 export async function POST(request: Request) {
   if (!hasDropboxAuth()) {
     return NextResponse.json(
-      {
-        error:
-          "Dropbox auth not configured. Set DROPBOX_REFRESH_TOKEN (plus app key/secret) or DROPBOX_ACCESS_TOKEN.",
-      },
+      { error: DROPBOX_AUTH_MISSING_MESSAGE },
       { status: 401 },
     );
   }
