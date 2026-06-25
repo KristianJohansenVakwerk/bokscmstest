@@ -259,10 +259,22 @@ export async function GET(request: Request) {
   });
 }
 
+function hasDropboxAuth(): boolean {
+  if (process.env.DROPBOX_ACCESS_TOKEN) return true;
+  return Boolean(
+    process.env.NEXT_PUBLIC_DROPBOX_APP_KEY &&
+      process.env.DROPBOX_APP_SECRET &&
+      process.env.DROPBOX_REFRESH_TOKEN,
+  );
+}
+
 export async function POST(request: Request) {
-  if (!process.env.DROPBOX_ACCESS_TOKEN) {
+  if (!hasDropboxAuth()) {
     return NextResponse.json(
-      { error: "DROPBOX_ACCESS_TOKEN is not set" },
+      {
+        error:
+          "Dropbox auth not configured. Set DROPBOX_REFRESH_TOKEN (plus app key/secret) or DROPBOX_ACCESS_TOKEN.",
+      },
       { status: 401 },
     );
   }

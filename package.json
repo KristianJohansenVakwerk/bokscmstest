@@ -12,6 +12,8 @@
     "migrate": "payload migrate",
     "export:sqlite": "payload export:sqlite",
     "pull:postgres:sqlite": "node ./scripts/pull-postgres-to-sqlite.mjs --force",
+    "dropbox:refresh-token": "node ./scripts/dropbox-refresh-token.mjs",
+    "reset:password": "payload reset:password",
     "migrate:media:blob": "payload migrate:media:blob",
     "import:neon": "payload import:neon"
   },

@@ -82,6 +82,10 @@ export default buildConfig({
       key: "verify:neon",
       scriptPath: path.resolve(dirname, "scripts/bin/verify-neon.cjs"),
     },
+    {
+      key: "reset:password",
+      scriptPath: path.resolve(dirname, "scripts/bin/reset-password.cjs"),
+    },
   ],
   admin: {
     user: Users.slug,
