@@ -18,6 +18,7 @@
     "import:neon": "payload import:neon"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.109.1",
     "@neondatabase/serverless": "^1.1.0",
     "@payloadcms/db-sqlite": "^3.85.0",
     "@payloadcms/db-vercel-postgres": "^3.85.0",
