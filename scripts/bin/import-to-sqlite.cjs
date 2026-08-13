@@ -12,21 +12,48 @@ function guessMimeType(filename) {
   return 'application/octet-stream'
 }
 
-async function download(url) {
+async function download(url, { retries = 3 } = {}) {
   // Node 18+ has global fetch. Next 16 requires Node 18+.
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`Failed to download media: ${res.status} ${res.statusText}`)
+  let lastErr
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetch(url)
+      if (!res.ok) {
+        // Non-2xx: retry only on 5xx/429; 404 etc are permanent.
+        if (res.status >= 500 || res.status === 429) {
+          lastErr = new Error(`Failed to download media (${res.status} ${res.statusText}): ${url}`)
+        } else {
+          throw new Error(`Failed to download media (${res.status} ${res.statusText}): ${url}`)
+        }
+      } else {
+        const arrayBuffer = await res.arrayBuffer()
+        return Buffer.from(arrayBuffer)
+      }
+    } catch (err) {
+      lastErr = err
+    }
+
+    if (attempt < retries) {
+      const backoffMs = 1000 * 2 ** attempt
+      await new Promise((r) => setTimeout(r, backoffMs))
+    }
   }
-  const arrayBuffer = await res.arrayBuffer()
-  return Buffer.from(arrayBuffer)
+  throw lastErr
 }
 
-function resolveRemoteUrl(url) {
+function resolveRemoteUrl(url, filename) {
   if (typeof url !== 'string' || url.length === 0) return null
 
   // Already absolute
   if (url.startsWith('http://') || url.startsWith('https://')) return url
+
+  // When media is stored on Vercel Blob, the site's /api/media/file/<name>
+  // endpoint is unreliable, but the raw file is served directly from the
+  // Blob CDN under the filename as key. Prefer that when configured.
+  const blobBase = process.env.PULL_MEDIA_BLOB_BASE_URL
+  if (blobBase && filename && url.startsWith('/api/media/file/')) {
+    return new URL(filename, blobBase.endsWith('/') ? blobBase : blobBase + '/').toString()
+  }
 
   // Relative URLs need a base pointing at the remote site that produced the export.
   if (url.startsWith('/')) {
@@ -93,14 +120,40 @@ module.exports.script = async function script(config) {
   const mediaDocs = Array.isArray(exportData.media) ? exportData.media : []
   const mediaIdMap = {}
 
-  for (const doc of mediaDocs) {
+  for (let i = 0; i < mediaDocs.length; i += 1) {
+    const doc = mediaDocs[i]
     const filename = doc?.filename
     const url = doc?.url
     if (!filename || !url) continue
 
-    const remoteUrl = resolveRemoteUrl(url)
+    // Idempotent: skip if a media doc with this filename already exists locally.
+    const existing = await payload.find({
+      collection: 'media',
+      limit: 1,
+      overrideAccess: true,
+      where: { filename: { equals: filename } },
+    })
+    if (existing.docs.length > 0) {
+      mediaIdMap[String(doc.id)] = existing.docs[0].id
+      continue
+    }
+
+    const remoteUrl = resolveRemoteUrl(url, filename)
     if (!remoteUrl) continue
-    const buf = await download(remoteUrl)
+
+    console.log(`[media ${i + 1}/${mediaDocs.length}] ${filename}`)
+    let buf
+    try {
+      buf = await download(remoteUrl)
+    } catch (err) {
+      // Skip media that no longer exists at the remote (orphaned DB row).
+      // Posts referencing this media will have image=null after import.
+      if (String(err?.message || '').includes('404')) {
+        console.warn(`  -> skipping (remote missing): ${filename}`)
+        continue
+      }
+      throw err
+    }
     const created = await payload.create({
       collection: 'media',
       overrideAccess: true,
