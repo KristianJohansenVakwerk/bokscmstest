@@ -22,7 +22,7 @@ export default function HomepageClient({ posts, postsError }: HomepageClientProp
         {postsError ? (
           <p className="text-sm text-red-600 dark:text-red-400">{postsError}</p>
         ) : posts && posts.length > 0 ? (
-          <ul className="grid grid-cols-12 gap-20">
+          <ul className="grid grid-cols-3 gap-20">
             {posts.map((post) =>
               post.imageUrl ? (
                 <li key={String(post.id)} className="relative aspect-square w-full">
@@ -30,7 +30,7 @@ export default function HomepageClient({ posts, postsError }: HomepageClientProp
                     src={post.imageUrl}
                     alt={post.imageAlt ?? post.title}
                     fill
-                    sizes="(max-width: 768px) 100vw, 8vw"
+                    sizes="(max-width: 768px) 100vw, 33vw"
                     className="object-contain"
                   />
                 </li>
