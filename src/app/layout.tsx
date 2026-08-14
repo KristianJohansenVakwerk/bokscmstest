@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import "@payloadcms/next/css";
 
@@ -12,6 +13,8 @@ import {
 import { importMap } from "./(payload)/admin/importMap.js";
 import React from "react";
 
+import IterationsNav from "./iterations/nav";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -20,6 +23,15 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const graphik = localFont({
+  src: [
+    { path: "./fonts/Graphik-Medium.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/Graphik-Medium.woff", weight: "500", style: "normal" },
+  ],
+  variable: "--font-graphik",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -47,9 +59,16 @@ export default function RootLayout({
       importMap={importMap}
       serverFunction={serverFunction}
       htmlProps={{
-        className: `${geistSans.variable} ${geistMono.variable} h-full antialiased`,
+        className: `${graphik.variable} ${geistSans.variable} ${geistMono.variable} h-full antialiased`,
       }}
     >
+      {/* Floating, transparent dropdown layer — sits over the content (no white
+          band above the canvas) and only the control itself is interactive. */}
+      <div className="pointer-events-none fixed left-0 top-0 z-50 p-2">
+        <span className="pointer-events-auto inline-block">
+          <IterationsNav />
+        </span>
+      </div>
       {children}
     </PayloadRootLayout>
   );
