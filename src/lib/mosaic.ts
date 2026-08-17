@@ -17,7 +17,7 @@
 
 export const COLUMNS = 9;
 export const GUTTER_PX = 80;
-export const ITERATION_COUNT = 17;
+export const ITERATION_COUNT = 20;
 
 const PORTRAIT_MAX_COLS = 4;
 const LANDSCAPE_MAX_COLS = 7;
