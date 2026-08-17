@@ -22,8 +22,5 @@ if (process.env.VERCEL === '1') {
   }
 }
 
-// Build with webpack, not Turbopack. Next 16 defaults `next build` to Turbopack,
-// whose production client bundle fails to hydrate on Vercel (blank page, no
-// errors). Webpack is the stable builder and matches our working sibling project.
-run('next build --webpack')
+run('next build')
 
