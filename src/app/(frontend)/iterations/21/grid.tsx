@@ -232,7 +232,9 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
       ) : null}
 
       {/* Hover preview: the full image, placed where the cursor entered the tile.
-          Non-interactive so it never steals the mouse from the tiles beneath. */}
+          Non-interactive so it never steals the mouse from the tiles beneath.
+          A tiny, heavily-blurred version loads instantly underneath so there's
+          immediate feedback while the full-resolution image streams in. */}
       {preview ? (
         <div
           className="pointer-events-none fixed z-50"
@@ -243,11 +245,22 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
             height: preview.h,
           }}
         >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={`/_next/image?url=${encodeURIComponent(preview.url)}&w=128&q=50`}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full object-contain blur-md"
+          />
           <Image
             src={preview.url}
             alt={preview.alt}
             fill
-            sizes="50vw"
+            // Request only the width actually shown (not 50vw, which over-fetches
+            // to the next device size), so the optimizer generates a smaller,
+            // faster image.
+            sizes={`${Math.round(preview.w)}px`}
+            quality={70}
             className="object-contain"
             priority
           />
