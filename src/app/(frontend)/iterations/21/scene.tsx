@@ -511,39 +511,33 @@ export default function Scene({
       if (!cancelled) startIntro();
     });
 
-    // A click leaves the intro for the grid — but first plays a staggered exit:
-    // the images fade out one after another, then the logo + box, then the grid
-    // is shown. EASE fades take ~700ms to near-complete.
-    const EXIT_STAGGER_MS = 120; // gap between each image starting to fade
+    // A click leaves the intro for the grid — but first plays a two-stage exit:
+    // all the images fade out together, then the logo + box, then the grid is
+    // shown. EASE fades take ~700ms to near-complete.
     const EXIT_FADE_MS = 700; // time for one opacity fade to finish
     const onClick = () => {
       if (exiting) return;
       exiting = true;
       if (auto) clearInterval(auto);
 
-      // Stagger the image (and label) fade-out.
-      const current = tiles.filter((t) => !t.exiting);
-      current.forEach((t, i) => {
-        exitTimers.push(
-          window.setTimeout(() => {
-            t.targetOpacity = 0;
-            t.exiting = true;
-          }, i * EXIT_STAGGER_MS),
-        );
-      });
-      const imagesDone = current.length * EXIT_STAGGER_MS + EXIT_FADE_MS;
+      // Fade all the current images (and labels) out at once.
+      for (const t of tiles) {
+        if (t.exiting) continue;
+        t.targetOpacity = 0;
+        t.exiting = true;
+      }
 
       // Then fade the logo and the box.
       exitTimers.push(
         window.setTimeout(() => {
           titleTargetOpacity = 0;
           boxTargetOpacity = 0;
-        }, imagesDone),
+        }, EXIT_FADE_MS),
       );
 
       // Then hand off to the grid.
       exitTimers.push(
-        window.setTimeout(() => onEnterRef.current(), imagesDone + EXIT_FADE_MS),
+        window.setTimeout(() => onEnterRef.current(), 2 * EXIT_FADE_MS),
       );
     };
     mount.addEventListener("click", onClick);
