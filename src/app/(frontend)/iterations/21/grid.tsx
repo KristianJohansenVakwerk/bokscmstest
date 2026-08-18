@@ -247,7 +247,7 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/_next/image?url=${encodeURIComponent(preview.url)}&w=128&q=50`}
+            src={`/_next/image?url=${encodeURIComponent(preview.url)}&w=128&q=75`}
             alt=""
             aria-hidden
             className="absolute inset-0 h-full w-full object-contain blur-md"
@@ -260,7 +260,6 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
             // to the next device size), so the optimizer generates a smaller,
             // faster image.
             sizes={`${Math.round(preview.w)}px`}
-            quality={70}
             className="object-contain"
             priority
           />
