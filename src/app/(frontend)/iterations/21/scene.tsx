@@ -270,6 +270,14 @@ export default function Scene({
     };
     let tiles: Tile[] = [];
 
+    // Exit animation state: on click the images fade out (staggered), then the
+    // logo + box, and only then do we hand off to the grid. These opacity targets
+    // are eased in the animate loop; the timers are cleared on unmount.
+    let exiting = false;
+    let titleTargetOpacity = 1;
+    let boxTargetOpacity = 1;
+    const exitTimers: number[] = [];
+
     // Position/scale a tile's label in world units (recomputed on resize). The
     // label is left-aligned to the image's left edge.
     const sizeLabel = (tile: Tile) => {
@@ -445,6 +453,7 @@ export default function Scene({
       color: 0x1a1818, // matches the logo ink
       roughness: 0.5,
       metalness: 0,
+      transparent: true, // so it can fade out on exit
     });
     const box = new THREE.Mesh(boxGeometry, boxMat);
     boxScene.add(box);
@@ -502,8 +511,41 @@ export default function Scene({
       if (!cancelled) startIntro();
     });
 
-    // A click leaves the intro for the grid view.
-    const onClick = () => onEnterRef.current();
+    // A click leaves the intro for the grid — but first plays a staggered exit:
+    // the images fade out one after another, then the logo + box, then the grid
+    // is shown. EASE fades take ~700ms to near-complete.
+    const EXIT_STAGGER_MS = 120; // gap between each image starting to fade
+    const EXIT_FADE_MS = 700; // time for one opacity fade to finish
+    const onClick = () => {
+      if (exiting) return;
+      exiting = true;
+      if (auto) clearInterval(auto);
+
+      // Stagger the image (and label) fade-out.
+      const current = tiles.filter((t) => !t.exiting);
+      current.forEach((t, i) => {
+        exitTimers.push(
+          window.setTimeout(() => {
+            t.targetOpacity = 0;
+            t.exiting = true;
+          }, i * EXIT_STAGGER_MS),
+        );
+      });
+      const imagesDone = current.length * EXIT_STAGGER_MS + EXIT_FADE_MS;
+
+      // Then fade the logo and the box.
+      exitTimers.push(
+        window.setTimeout(() => {
+          titleTargetOpacity = 0;
+          boxTargetOpacity = 0;
+        }, imagesDone),
+      );
+
+      // Then hand off to the grid.
+      exitTimers.push(
+        window.setTimeout(() => onEnterRef.current(), imagesDone + EXIT_FADE_MS),
+      );
+    };
     mount.addEventListener("click", onClick);
 
     const onResize = () => {
@@ -551,6 +593,11 @@ export default function Scene({
       box.rotation.x += (boxTargetRot.x - box.rotation.x) * EASE;
       box.rotation.y += (boxTargetRot.y - box.rotation.y) * EASE;
 
+      // Ease the logo and box opacity toward their targets (both 1 until the exit
+      // sequence drops them to 0 after the images have faded).
+      titleMat.opacity += (titleTargetOpacity - titleMat.opacity) * EASE;
+      boxMat.opacity += (boxTargetOpacity - boxMat.opacity) * EASE;
+
       // Manual two-pass render: main perspective scene, then the box overlay on
       // top with the depth buffer cleared so it always draws in front.
       renderer.clear();
@@ -565,6 +612,7 @@ export default function Scene({
       cancelled = true;
       cancelAnimationFrame(raf);
       if (auto) clearInterval(auto);
+      exitTimers.forEach((id) => clearTimeout(id));
       mount.removeEventListener("click", onClick);
       resizeObserver.disconnect();
       for (const t of tiles) {
