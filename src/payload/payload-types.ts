@@ -152,10 +152,6 @@ export interface User {
 export interface Media {
   id: number;
   alt?: string | null;
-  /**
-   * Average color of the image (#rrggbb), computed on upload for load-state placeholders.
-   */
-  backgroundColor?: string | null;
   updatedAt: string;
   createdAt: string;
   url?: string | null;
@@ -293,7 +289,6 @@ export interface UsersSelect<T extends boolean = true> {
  */
 export interface MediaSelect<T extends boolean = true> {
   alt?: T;
-  backgroundColor?: T;
   updatedAt?: T;
   createdAt?: T;
   url?: T;

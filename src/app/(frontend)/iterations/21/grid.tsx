@@ -3,13 +3,12 @@
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type PostListItem = {
+type PostListItem = {
   id: string | number;
   title: string;
   slug: string;
   imageUrl: string | null;
   imageAlt: string | null;
-  backgroundColor: string | null;
 };
 
 // The grid's column model, mirrored from the Tailwind classes on the <ul> below
@@ -176,10 +175,6 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
                   ref={setTileRef}
                   data-id={id}
                   className="relative aspect-square w-[60px] shrink-0 cursor-pointer"
-                  // The image's average color shows as a placeholder while the
-                  // thumbnail loads (and remains as a backdrop in the letterbox
-                  // areas of the object-contain image).
-                  style={{ backgroundColor: post.backgroundColor ?? undefined }}
                   onMouseEnter={(e) => {
                     setPreview(previewAt(e.clientX, url, alt));
                     setCaption(fileNameOf(url));
@@ -238,9 +233,8 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
 
       {/* Hover preview: the full image, placed where the cursor entered the tile.
           Non-interactive so it never steals the mouse from the tiles beneath.
-          A plain <img> at a FIXED 1080px width (not next/image, which doubles to
-          ~1920px on retina) — plenty sharp for a hover glimpse and much faster
-          for the optimizer to generate and transfer. */}
+          A tiny, heavily-blurred version loads instantly underneath so there's
+          immediate feedback while the full-resolution image streams in. */}
       {preview ? (
         <div
           className="pointer-events-none fixed z-50"
@@ -253,10 +247,21 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/_next/image?url=${encodeURIComponent(preview.url)}&w=1080&q=75`}
+            src={`/_next/image?url=${encodeURIComponent(preview.url)}&w=128&q=75`}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full object-contain blur-md"
+          />
+          <Image
+            src={preview.url}
             alt={preview.alt}
-            fetchPriority="high"
-            className="absolute inset-0 h-full w-full object-contain"
+            fill
+            // Request only the width actually shown (not 50vw, which over-fetches
+            // to the next device size), so the optimizer generates a smaller,
+            // faster image.
+            sizes={`${Math.round(preview.w)}px`}
+            className="object-contain"
+            priority
           />
         </div>
       ) : null}
