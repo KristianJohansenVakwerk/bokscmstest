@@ -71,6 +71,10 @@ export default buildConfig({
       scriptPath: path.resolve(dirname, "scripts/bin/migrate-media-to-blob.cjs"),
     },
     {
+      key: "backfill:media:color",
+      scriptPath: path.resolve(dirname, "scripts/bin/backfill-media-color.cjs"),
+    },
+    {
       key: "import:sqlite",
       scriptPath: path.resolve(dirname, "scripts/bin/import-to-sqlite.cjs"),
     },

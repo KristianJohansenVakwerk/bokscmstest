@@ -2,16 +2,8 @@
 
 import { useState } from "react";
 
-import Grid from "./grid";
+import Grid, { type PostListItem } from "./grid";
 import Scene, { type SceneImage } from "./scene";
-
-type PostListItem = {
-  id: string | number;
-  title: string;
-  slug: string;
-  imageUrl: string | null;
-  imageAlt: string | null;
-};
 
 export default function Intro({
   images,

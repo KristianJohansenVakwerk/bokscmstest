@@ -43,7 +43,11 @@ export default async function IterationTwentyOne() {
   const posts = result.docs.map((doc) => {
     const image =
       doc.image && typeof doc.image === "object"
-        ? (doc.image as { url?: string | null; alt?: string | null })
+        ? (doc.image as {
+            url?: string | null;
+            alt?: string | null;
+            backgroundColor?: string | null;
+          })
         : null;
     return {
       id: doc.id,
@@ -51,6 +55,7 @@ export default async function IterationTwentyOne() {
       slug: doc.slug,
       imageUrl: image?.url ?? null,
       imageAlt: image?.alt ?? null,
+      backgroundColor: image?.backgroundColor ?? null,
     };
   });
 
