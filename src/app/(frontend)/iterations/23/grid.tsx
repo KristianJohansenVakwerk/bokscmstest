@@ -16,12 +16,9 @@ export type PostListItem = {
   height?: number | null;
 };
 
-// The grid's column model, mirrored from the Tailwind classes on the <ul> below
-// (grid-cols-12 with gap-20 = 5rem). Used to size the hover preview in columns.
-const COLS = 12;
-const GAP = 80; // px, Tailwind gap-20
-const LANDSCAPE_SPAN = 5; // columns wide when the image is landscape
-const PORTRAIT_SPAN = 3; // columns wide when the image is portrait
+// The hover preview is always the SAME height regardless of the image's aspect
+// ratio — only its width varies. Height is this share of the viewport height.
+const PREVIEW_HEIGHT_FRACTION = 0.6;
 const CURSOR_OFFSET = 24; // px between the cursor and the preview
 const EDGE_MARGIN = 16; // px the preview keeps from the viewport edge
 // How far outside the viewport a tile starts loading, so images are ready just
@@ -50,7 +47,39 @@ type Preview = {
   y: number;
   w: number;
   h: number;
+  // The tile's background colour, painted behind the preview as a backdrop fill
+  // while the full-size image is still loading.
+  bg: string | null;
 };
+
+// The big hover image. Its box is painted with the tile's backdrop colour so a
+// solid fill shows immediately; the image then fades in over it once decoded.
+function PreviewImage({ preview }: { preview: Preview }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div
+      className="pointer-events-none fixed z-50"
+      style={{
+        left: preview.x,
+        top: preview.y,
+        width: preview.w,
+        height: preview.h,
+        backgroundColor: preview.bg ?? "#f4f4f5",
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={`/_next/image?url=${encodeURIComponent(preview.url)}&w=1080&q=75`}
+        alt={preview.alt}
+        fetchPriority="high"
+        onLoad={() => setLoaded(true)}
+        className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-out ${
+          loaded ? "opacity-100" : "opacity-0"
+        }`}
+      />
+    </div>
+  );
+}
 
 // A lazy-loaded thumbnail that fades in once its image decodes. Reports the
 // loaded element so the parent can record the true aspect ratio.
@@ -87,7 +116,6 @@ function Thumb({
 // (it doesn't track further movement), sized in grid columns (5 for landscape,
 // 3 for portrait) and flipped/clamped so it always stays fully on screen.
 export default function Grid({ posts }: { posts: PostListItem[] | null }) {
-  const gridRef = useRef<HTMLUListElement>(null);
   // True aspect ratio (w/h) per image url, learned once each thumbnail loads —
   // the optimized image is EXIF-corrected, so this beats the stored dimensions.
   const ratios = useRef<Map<string, number>>(new Map());
@@ -104,6 +132,27 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
     return ctx.measureText(text).width + CAPTION_PADDING;
   };
   const [preview, setPreview] = useState<Preview | null>(null);
+  // Horizontal nudge (px) applied to the hovered tile's caption so it never
+  // spills past the viewport edge — captions are centered under their tile, and
+  // the outermost tiles in a row would otherwise clip against the screen edge.
+  const [captionShift, setCaptionShift] = useState<{
+    id: string;
+    dx: number;
+  } | null>(null);
+
+  // How far the caption for a tile must shift to stay fully on screen. The
+  // caption is centered on the tile, so its box spans [center-w/2, center+w/2];
+  // pull it right if it clips the left edge, left if it clips the right edge.
+  const captionShiftFor = (tileRect: DOMRect, url: string) => {
+    const capW = captionWidth(`KM_${fileNameOf(url)}`);
+    const center = tileRect.left + tileRect.width / 2;
+    const left = center - capW / 2;
+    const right = center + capW / 2;
+    if (left < EDGE_MARGIN) return EDGE_MARGIN - left;
+    if (right > window.innerWidth - EDGE_MARGIN)
+      return window.innerWidth - EDGE_MARGIN - right;
+    return 0;
+  };
 
   // Lazy-load state: the set of tile ids that have scrolled near the viewport.
   const [visible, setVisible] = useState<Set<string>>(new Set());
@@ -148,31 +197,31 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
     observerRef.current?.observe(el);
   }, []);
 
-  // Place a preview horizontally next to the cursor's entry x and vertically
-  // centered on screen, sized to the image's orientation, kept fully within the
-  // viewport (flip to the other side of the cursor near an edge, then clamp;
-  // shrink to fit if taller than the viewport).
+  // Place a preview on the side of the cursor dictated by its screen half (left
+  // half → right of cursor, right half → left), vertically centered, at a fixed
+  // height. It flips to the other side only as a fallback (caption in the way or
+  // it would run off the far edge), then clamps fully within the viewport.
   const previewAt = (
     clientX: number,
     tileRect: DOMRect,
     url: string,
     alt: string,
+    bg: string | null,
   ): Preview => {
-    const gridW = gridRef.current?.clientWidth ?? window.innerWidth;
-    const colW = (gridW - (COLS - 1) * GAP) / COLS;
     const ratio = ratios.current.get(url) ?? 1.4; // assume landscape until known
-    const span = ratio >= 1 ? LANDSCAPE_SPAN : PORTRAIT_SPAN;
-
-    let w = span * colW + (span - 1) * GAP;
-    let h = w / ratio;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
 
-    // Shrink to fit vertically if a tall portrait would overflow the viewport.
-    const maxH = vh - 2 * EDGE_MARGIN;
-    if (h > maxH) {
-      w *= maxH / h;
-      h = maxH;
+    // Every preview is the SAME height regardless of the image's ratio; only the
+    // width varies to keep the aspect correct. Height is a fixed share of the
+    // viewport, capped so it never touches the top/bottom edges. As a safety net
+    // for extreme panoramas, shrink the height if the width would overflow.
+    let h = Math.min(vh * PREVIEW_HEIGHT_FRACTION, vh - 2 * EDGE_MARGIN);
+    let w = h * ratio;
+    const maxW = vw - 2 * EDGE_MARGIN;
+    if (w > maxW) {
+      h *= maxW / w;
+      w = maxW;
     }
 
     // The caption's on-screen box (mirrors the tile's caption span): centered
@@ -184,38 +233,48 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
     const capTop = tileRect.bottom + CAPTION_GAP;
     const capBottom = capTop + CAPTION_HEIGHT;
 
-    // Vertical position is centered on screen; horizontal tracks the cursor's x
-    // (to the right of it, flipping to the left near the edge).
-    let x = clientX + CURSOR_OFFSET;
+    // Which side the preview sits on is decided by the cursor's screen half:
+    // cursor in the LEFT half → preview to the RIGHT of it; RIGHT half → to the
+    // LEFT. It only flips to the other side as a fallback (no room by the
+    // caption, or it would run off the far edge). Vertically it's centered.
+    const onLeftHalf = clientX < vw / 2;
+    const plainRight = clientX + CURSOR_OFFSET;
+    const plainLeft = clientX - CURSOR_OFFSET - w;
+    // Caption-aware variants of each side, nudged clear of the label's box.
+    const capAwareRight = Math.max(plainRight, capR + CAPTION_CLEARANCE);
+    const capAwareLeft = Math.min(plainLeft, capL - CAPTION_CLEARANCE - w);
+
+    let x = onLeftHalf ? plainRight : plainLeft;
     let y = (vh - h) / 2;
 
     // When the preview's vertical span would cross the caption's row, keep it
-    // clear of the label: push it to whichever side has room, and if neither
-    // does, drop it below/above the caption instead. This guarantees the big
-    // image never sits on top of the caption.
+    // clear of the label: stay on the preferred side if it fits, else flip to
+    // the other side, else drop it below/above the caption. This guarantees the
+    // big image never sits on top of the caption.
     if (y < capBottom && y + h > capTop) {
-      const rightX = Math.max(clientX + CURSOR_OFFSET, capR + CAPTION_CLEARANCE);
-      const leftX =
-        Math.min(clientX - CURSOR_OFFSET, capL - CAPTION_CLEARANCE) - w;
-      if (rightX + w + EDGE_MARGIN <= vw) {
-        x = rightX;
-      } else if (leftX >= EDGE_MARGIN) {
-        x = leftX;
+      const preferX = onLeftHalf ? capAwareRight : capAwareLeft;
+      const otherX = onLeftHalf ? capAwareLeft : capAwareRight;
+      const fitsOnScreen = (candidate: number) =>
+        candidate >= EDGE_MARGIN && candidate + w + EDGE_MARGIN <= vw;
+      if (fitsOnScreen(preferX)) {
+        x = preferX;
+      } else if (fitsOnScreen(otherX)) {
+        x = otherX;
       } else if (capBottom + CAPTION_CLEARANCE + h + EDGE_MARGIN <= vh) {
         y = capBottom + CAPTION_CLEARANCE;
-        if (x + w + EDGE_MARGIN > vw) x = clientX - CURSOR_OFFSET - w;
       } else {
         y = capTop - CAPTION_CLEARANCE - h;
-        if (x + w + EDGE_MARGIN > vw) x = clientX - CURSOR_OFFSET - w;
       }
-    } else if (x + w + EDGE_MARGIN > vw) {
-      x = clientX - CURSOR_OFFSET - w;
+    } else if (onLeftHalf && x + w + EDGE_MARGIN > vw) {
+      x = plainLeft; // preferred right side overflows → flip left
+    } else if (!onLeftHalf && x < EDGE_MARGIN) {
+      x = plainRight; // preferred left side overflows → flip right
     }
 
     x = Math.max(EDGE_MARGIN, Math.min(x, vw - w - EDGE_MARGIN));
     y = Math.max(EDGE_MARGIN, Math.min(y, vh - h - EDGE_MARGIN));
 
-    return { url, alt, x, y, w, h };
+    return { url, alt, x, y, w, h, bg };
   };
 
   const slides = (posts ?? []).filter((p) => p.imageUrl);
@@ -224,10 +283,7 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
     <div className="relative flex flex-1 flex-col overflow-x-clip bg-zinc-50 font-sans">
       <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-14">
         {slides.length > 0 ? (
-          <ul
-            ref={gridRef}
-            className="flex flex-wrap items-center justify-center gap-20"
-          >
+          <ul className="flex flex-wrap items-center justify-center gap-20">
             {slides.map((post) => {
               const id = String(post.id);
               const url = post.imageUrl!;
@@ -250,17 +306,23 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
                     aspectRatio: aspect,
                     backgroundColor: post.backgroundColor ?? undefined,
                   }}
-                  onMouseEnter={(e) =>
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
                     setPreview(
                       previewAt(
                         e.clientX,
-                        e.currentTarget.getBoundingClientRect(),
+                        rect,
                         url,
                         alt,
+                        post.backgroundColor,
                       ),
-                    )
-                  }
-                  onMouseLeave={() => setPreview(null)}
+                    );
+                    setCaptionShift({ id, dx: captionShiftFor(rect, url) });
+                  }}
+                  onMouseLeave={() => {
+                    setPreview(null);
+                    setCaptionShift(null);
+                  }}
                 >
                   {/* Only mount the image once the tile nears the viewport, so
                       off-screen thumbnails are never requested; it fades in on
@@ -285,7 +347,7 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
                       it never affects the grid layout (nothing jumps); revealed
                       on hover via the tile's `group`. */}
                   <span
-                    className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap bg-white px-2 py-1 text-sm text-black opacity-0 transition-opacity group-hover:opacity-100"
+                    className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 whitespace-nowrap bg-white px-2 py-1 text-sm text-black opacity-0 transition-opacity group-hover:opacity-100"
                     style={{
                       fontFamily:
                         '"Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif',
@@ -293,6 +355,11 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
                       // keep the weight normal so the browser doesn't
                       // synthetically bold it.
                       fontWeight: 400,
+                      // Center under the tile (-50%), plus the viewport-clamp
+                      // nudge for the currently hovered tile.
+                      transform: `translateX(calc(-50% + ${
+                        captionShift?.id === id ? captionShift.dx : 0
+                      }px))`,
                     }}
                   >
                     {`KM_${fileNameOf(url)}`}
@@ -310,26 +377,9 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
           Non-interactive so it never steals the mouse from the tiles beneath.
           A plain <img> at a FIXED 1080px width (not next/image, which doubles to
           ~1920px on retina) — plenty sharp for a hover glimpse and much faster
-          for the optimizer to generate and transfer. */}
-      {preview ? (
-        <div
-          className="pointer-events-none fixed z-50"
-          style={{
-            left: preview.x,
-            top: preview.y,
-            width: preview.w,
-            height: preview.h,
-          }}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`/_next/image?url=${encodeURIComponent(preview.url)}&w=1080&q=75`}
-            alt={preview.alt}
-            fetchPriority="high"
-            className="absolute inset-0 h-full w-full object-contain"
-          />
-        </div>
-      ) : null}
+          for the optimizer to generate and transfer. Keyed by url so its
+          load/fade state resets for each new image. */}
+      {preview ? <PreviewImage key={preview.url} preview={preview} /> : null}
     </div>
   );
 }
