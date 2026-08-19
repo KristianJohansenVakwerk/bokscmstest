@@ -280,7 +280,7 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
   const slides = (posts ?? []).filter((p) => p.imageUrl);
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-x-clip bg-zinc-50 font-sans">
+    <div className="relative flex flex-1 flex-col overflow-x-clip bg-white font-sans">
       <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-14">
         {slides.length > 0 ? (
           <ul className="flex flex-wrap items-center justify-center gap-20">

@@ -23,7 +23,7 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
   const [caption, setCaption] = useState<string | null>(null);
 
   return (
-    <div className="relative flex flex-1 flex-col bg-zinc-50 font-sans">
+    <div className="relative flex flex-1 flex-col bg-white font-sans">
       <main className="flex w-full flex-1 flex-col px-5 pt-5">
         {posts && posts.length > 0 ? (
           <ul className="grid grid-cols-12 gap-20">

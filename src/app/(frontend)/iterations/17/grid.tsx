@@ -82,7 +82,7 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
   const slides = (posts ?? []).filter((p) => p.imageUrl);
 
   return (
-    <div className="relative flex flex-1 flex-col bg-zinc-50 font-sans">
+    <div className="relative flex flex-1 flex-col bg-white font-sans">
       <main className="flex w-full flex-1 flex-col px-5 pt-5">
         {slides.length > 0 ? (
           <ul ref={gridRef} className="grid grid-cols-12 gap-20">

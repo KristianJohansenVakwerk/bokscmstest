@@ -17,7 +17,7 @@ export type HomepageClientProps = {
 
 export default function HomepageClient({ posts, postsError }: HomepageClientProps) {
   return (
-    <div className="flex flex-1 flex-col bg-zinc-50 font-sans">
+    <div className="flex flex-1 flex-col bg-white font-sans">
       <main className="flex w-full flex-1 flex-col px-5 pt-5">
         {postsError ? (
           <p className="text-sm text-red-600 dark:text-red-400">{postsError}</p>

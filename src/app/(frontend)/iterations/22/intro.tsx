@@ -156,14 +156,14 @@ export default function Intro({ posts }: { posts: PostListItem[] | null }) {
   }, [mode, revealed]);
 
   // Contact hides everything for now — a blank canvas keeping the page height.
-  if (mode === "contact") return <div className="flex flex-1 bg-zinc-50" />;
+  if (mode === "contact") return <div className="flex flex-1 bg-white" />;
 
   // The grid appears only once the wordmark has finished fading out.
   if (mode === "index" && revealed) return <Grid posts={posts} />;
 
   return (
     <div
-      className="relative flex flex-1 cursor-pointer flex-col bg-zinc-50"
+      className="relative flex flex-1 cursor-pointer flex-col bg-white"
       onClick={() => mode === "intro" && setMode("index")}
     >
       {/* Backdrop: full grid skeleton, 15 images shown at a time. */}

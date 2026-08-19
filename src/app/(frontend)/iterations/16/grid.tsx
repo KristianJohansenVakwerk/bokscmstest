@@ -101,7 +101,7 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
   const current = active === null ? null : slides[active];
 
   return (
-    <div className="relative flex flex-1 flex-col bg-zinc-50 font-sans">
+    <div className="relative flex flex-1 flex-col bg-white font-sans">
       <main className="flex w-full flex-1 flex-col px-5 pt-5">
         {slides.length > 0 ? (
           <ul className="grid grid-cols-12 gap-20">
@@ -159,7 +159,7 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
           through, and the filename rides along the bottom. */}
       {current ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-50/95"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-white/95"
           onClick={close}
         >
           <button
