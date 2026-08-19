@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { useView } from "../../view-context";
 import Grid, { type PostListItem } from "./grid";
 
 const SHOWN_COUNT = 15; // images visible at a time
@@ -111,7 +112,7 @@ function CrossfadeGrid({ posts }: { posts: PostListItem[] }) {
   if (slides.length === 0) return null;
 
   return (
-    <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-5">
+    <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-16">
       <ul className="flex flex-wrap items-center justify-center gap-20">
         {slides.map((s) => {
           const id = String(s.id);
@@ -139,23 +140,31 @@ function CrossfadeGrid({ posts }: { posts: PostListItem[] }) {
 // Iteration 22 intro: the grid view's exact layout with only 15 images shown at
 // a time (crossfading across the tiles), and the SVG wordmark laid over it at
 // full viewport width (30px padding each side). Clicking fades the wordmark out
-// and hands off to the interactive grid.
+// and hands off to the interactive grid. The active view is driven by the global
+// nav dropdown: "index" shows the grid, "contact" hides both intro and grid.
 export default function Intro({ posts }: { posts: PostListItem[] | null }) {
-  const [entered, setEntered] = useState(false);
-  const [logoOut, setLogoOut] = useState(false);
+  const { mode, setMode } = useView();
+  const [revealed, setRevealed] = useState(false);
 
-  const enter = () => {
-    if (logoOut) return;
-    setLogoOut(true);
-    window.setTimeout(() => setEntered(true), LOGO_FADE_MS);
-  };
+  // Once "index" is requested — by clicking the wordmark or picking it from the
+  // nav dropdown — reveal the grid after the wordmark has faded out. The fade
+  // itself is derived from `mode` below, so both paths share the transition.
+  useEffect(() => {
+    if (mode !== "index" || revealed) return;
+    const t = window.setTimeout(() => setRevealed(true), LOGO_FADE_MS);
+    return () => window.clearTimeout(t);
+  }, [mode, revealed]);
 
-  if (entered) return <Grid posts={posts} />;
+  // Contact hides everything for now — a blank canvas keeping the page height.
+  if (mode === "contact") return <div className="flex flex-1 bg-zinc-50" />;
+
+  // The grid appears only once the wordmark has finished fading out.
+  if (mode === "index" && revealed) return <Grid posts={posts} />;
 
   return (
     <div
       className="relative flex flex-1 cursor-pointer flex-col bg-zinc-50"
-      onClick={enter}
+      onClick={() => mode === "intro" && setMode("index")}
     >
       {/* Backdrop: full grid skeleton, 15 images shown at a time. */}
       <div className="pointer-events-none flex flex-1 flex-col">
@@ -172,7 +181,7 @@ export default function Intro({ posts }: { posts: PostListItem[] | null }) {
         style={{
           width: "calc(100vw - 60px)",
           height: "auto",
-          opacity: logoOut ? 0 : 1,
+          opacity: mode === "index" ? 0 : 1,
           transitionDuration: `${LOGO_FADE_MS}ms`,
         }}
       />

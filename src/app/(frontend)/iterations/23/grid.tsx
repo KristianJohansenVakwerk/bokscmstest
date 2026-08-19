@@ -186,7 +186,7 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
                   key={id}
                   ref={setTileRef}
                   data-id={id}
-                  className="relative h-[60px] shrink-0 cursor-pointer"
+                  className="relative h-[69px] shrink-0 cursor-pointer"
                   style={{
                     aspectRatio: aspect,
                     backgroundColor: post.backgroundColor ?? undefined,

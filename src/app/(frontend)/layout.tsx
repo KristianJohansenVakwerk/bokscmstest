@@ -4,7 +4,8 @@ import localFont from "next/font/local";
 import React from "react";
 
 import "./globals.css";
-import IterationsNav from "./iterations/nav";
+import SiteNav from "./site-nav";
+import { ViewProvider } from "./view-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -45,14 +46,16 @@ export default function FrontendLayout({
       className={`${graphik.variable} ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        {/* Floating, transparent dropdown layer — sits over the content (no white
-            band above the canvas) and only the control itself is interactive. */}
-        <div className="pointer-events-none fixed left-0 top-0 z-50 p-2">
-          <span className="pointer-events-auto inline-block">
-            <IterationsNav />
-          </span>
-        </div>
-        {children}
+        <ViewProvider>
+          {/* Floating, transparent dropdown layer — sits over the content (no white
+              band above the canvas) and only the control itself is interactive. */}
+          <div className="pointer-events-none fixed left-0 top-0 z-50 p-2">
+            <span className="pointer-events-auto inline-block">
+              <SiteNav />
+            </span>
+          </div>
+          {children}
+        </ViewProvider>
       </body>
     </html>
   );
