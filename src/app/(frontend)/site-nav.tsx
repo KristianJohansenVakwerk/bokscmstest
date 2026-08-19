@@ -13,6 +13,13 @@ export default function SiteNav() {
       value={mode}
       onChange={(e) => setMode(e.target.value as ViewMode)}
       className="h-8 text-sm focus:outline-none"
+      style={{
+        fontFamily:
+          '"Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif',
+        // Graphik-Black is a single-weight face registered at 400; keep the
+        // weight normal so the browser doesn't synthetically bold it.
+        fontWeight: 400,
+      }}
     >
       <option value="intro" disabled hidden>
         KM
