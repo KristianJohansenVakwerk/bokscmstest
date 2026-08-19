@@ -112,7 +112,7 @@ function CrossfadeGrid({ posts }: { posts: PostListItem[] }) {
   if (slides.length === 0) return null;
 
   return (
-    <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-16">
+    <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-14">
       <ul className="flex flex-wrap items-center justify-center gap-20">
         {slides.map((s) => {
           const id = String(s.id);

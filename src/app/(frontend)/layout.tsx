@@ -48,8 +48,10 @@ export default function FrontendLayout({
       <body className="flex min-h-full flex-col">
         <ViewProvider>
           {/* Floating, transparent dropdown layer — sits over the content (no white
-              band above the canvas) and only the control itself is interactive. */}
-          <div className="pointer-events-none fixed left-0 top-0 z-50 p-2">
+              band above the canvas) and only the control itself is interactive.
+              Horizontally centered; pt-3 sets the gap above the dropdown (mirrored
+              below it by the grid's pt-14). */}
+          <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center pt-3">
             <span className="pointer-events-auto inline-block">
               <SiteNav />
             </span>

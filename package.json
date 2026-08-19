@@ -16,6 +16,7 @@
     "reset:password": "payload reset:password",
     "migrate:media:blob": "payload migrate:media:blob",
     "backfill:media:color": "payload backfill:media:color",
+    "backfill:media:dimensions": "payload backfill:media:dimensions",
     "import:neon": "payload import:neon"
   },
   "dependencies": {

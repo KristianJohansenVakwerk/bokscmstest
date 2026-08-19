@@ -28,6 +28,15 @@ const EDGE_MARGIN = 16; // px the preview keeps from the viewport edge
 // before they scroll into view.
 const PRELOAD_MARGIN = "300px 0px";
 
+// Caption geometry, mirrored from the tile's caption span below — the hover
+// preview uses it to steer clear of the label so it never covers it.
+const CAPTION_FONT =
+  '400 14px "Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif';
+const CAPTION_PADDING = 16; // px-2 on both sides
+const CAPTION_GAP = 8; // mt-2 gap below the tile
+const CAPTION_HEIGHT = 28; // text-sm line + py-1 top/bottom
+const CAPTION_CLEARANCE = 12; // px of breathing room the preview keeps from it
+
 // Filename caption, matching the labels used in the intro.
 function fileNameOf(url: string) {
   const path = decodeURIComponent(url.split("?")[0]);
@@ -82,8 +91,19 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
   // True aspect ratio (w/h) per image url, learned once each thumbnail loads —
   // the optimized image is EXIF-corrected, so this beats the stored dimensions.
   const ratios = useRef<Map<string, number>>(new Map());
+  // Cached canvas 2D context for measuring caption text width (see previewAt).
+  const measureCtx = useRef<CanvasRenderingContext2D | null>(null);
+  const captionWidth = (text: string) => {
+    let ctx = measureCtx.current;
+    if (!ctx) {
+      ctx = document.createElement("canvas").getContext("2d");
+      measureCtx.current = ctx;
+    }
+    if (!ctx) return text.length * 8 + CAPTION_PADDING;
+    ctx.font = CAPTION_FONT;
+    return ctx.measureText(text).width + CAPTION_PADDING;
+  };
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [caption, setCaption] = useState<string | null>(null);
 
   // Lazy-load state: the set of tile ids that have scrolled near the viewport.
   const [visible, setVisible] = useState<Set<string>>(new Set());
@@ -132,7 +152,12 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
   // centered on screen, sized to the image's orientation, kept fully within the
   // viewport (flip to the other side of the cursor near an edge, then clamp;
   // shrink to fit if taller than the viewport).
-  const previewAt = (clientX: number, url: string, alt: string): Preview => {
+  const previewAt = (
+    clientX: number,
+    tileRect: DOMRect,
+    url: string,
+    alt: string,
+  ): Preview => {
     const gridW = gridRef.current?.clientWidth ?? window.innerWidth;
     const colW = (gridW - (COLS - 1) * GAP) / COLS;
     const ratio = ratios.current.get(url) ?? 1.4; // assume landscape until known
@@ -150,12 +175,45 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
       h = maxH;
     }
 
-    // Horizontal position tracks the cursor's x (to the right of it, flipping to
-    // the left near the edge); vertical position is always centered on screen.
+    // The caption's on-screen box (mirrors the tile's caption span): centered
+    // under the tile, one small line tall, a little below its bottom edge.
+    const capW = captionWidth(`KM_${fileNameOf(url)}`);
+    const capCenterX = tileRect.left + tileRect.width / 2;
+    const capL = capCenterX - capW / 2;
+    const capR = capCenterX + capW / 2;
+    const capTop = tileRect.bottom + CAPTION_GAP;
+    const capBottom = capTop + CAPTION_HEIGHT;
+
+    // Vertical position is centered on screen; horizontal tracks the cursor's x
+    // (to the right of it, flipping to the left near the edge).
     let x = clientX + CURSOR_OFFSET;
-    if (x + w + EDGE_MARGIN > vw) x = clientX - CURSOR_OFFSET - w;
+    let y = (vh - h) / 2;
+
+    // When the preview's vertical span would cross the caption's row, keep it
+    // clear of the label: push it to whichever side has room, and if neither
+    // does, drop it below/above the caption instead. This guarantees the big
+    // image never sits on top of the caption.
+    if (y < capBottom && y + h > capTop) {
+      const rightX = Math.max(clientX + CURSOR_OFFSET, capR + CAPTION_CLEARANCE);
+      const leftX =
+        Math.min(clientX - CURSOR_OFFSET, capL - CAPTION_CLEARANCE) - w;
+      if (rightX + w + EDGE_MARGIN <= vw) {
+        x = rightX;
+      } else if (leftX >= EDGE_MARGIN) {
+        x = leftX;
+      } else if (capBottom + CAPTION_CLEARANCE + h + EDGE_MARGIN <= vh) {
+        y = capBottom + CAPTION_CLEARANCE;
+        if (x + w + EDGE_MARGIN > vw) x = clientX - CURSOR_OFFSET - w;
+      } else {
+        y = capTop - CAPTION_CLEARANCE - h;
+        if (x + w + EDGE_MARGIN > vw) x = clientX - CURSOR_OFFSET - w;
+      }
+    } else if (x + w + EDGE_MARGIN > vw) {
+      x = clientX - CURSOR_OFFSET - w;
+    }
+
     x = Math.max(EDGE_MARGIN, Math.min(x, vw - w - EDGE_MARGIN));
-    const y = (vh - h) / 2;
+    y = Math.max(EDGE_MARGIN, Math.min(y, vh - h - EDGE_MARGIN));
 
     return { url, alt, x, y, w, h };
   };
@@ -163,8 +221,8 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
   const slides = (posts ?? []).filter((p) => p.imageUrl);
 
   return (
-    <div className="relative flex flex-1 flex-col bg-zinc-50 font-sans">
-      <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-16">
+    <div className="relative flex flex-1 flex-col overflow-x-clip bg-zinc-50 font-sans">
+      <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-14">
         {slides.length > 0 ? (
           <ul
             ref={gridRef}
@@ -174,11 +232,12 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
               const id = String(post.id);
               const url = post.imageUrl!;
               const alt = post.imageAlt ?? post.title;
-              // Fixed HEIGHT (uniform rows, matching iteration 21's spacing) with
-              // fluid width from the stored aspect ratio, set once and never
-              // corrected on load — so the tile size is fixed from first paint
-              // and nothing jumps. object-cover fills the tile so the backdrop
-              // never shows through (it still shows as the load placeholder).
+              // Fixed HEIGHT (uniform rows) with fluid width from the stored
+              // aspect ratio, set once so the tile size is fixed from first paint
+              // and nothing jumps. Media stores EXIF-corrected width/height (see
+              // the Media collection hook + backfill:media:dimensions), so rotated
+              // portraits already have the right shape. object-cover fills the
+              // tile so the backdrop never shows through while loading.
               const aspect =
                 post.width && post.height ? post.width / post.height : 1;
               return (
@@ -186,19 +245,22 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
                   key={id}
                   ref={setTileRef}
                   data-id={id}
-                  className="relative h-[60px] shrink-0 cursor-pointer"
+                  className="group relative h-[60px] shrink-0 cursor-pointer"
                   style={{
                     aspectRatio: aspect,
                     backgroundColor: post.backgroundColor ?? undefined,
                   }}
-                  onMouseEnter={(e) => {
-                    setPreview(previewAt(e.clientX, url, alt));
-                    setCaption(fileNameOf(url));
-                  }}
-                  onMouseLeave={() => {
-                    setPreview(null);
-                    setCaption(null);
-                  }}
+                  onMouseEnter={(e) =>
+                    setPreview(
+                      previewAt(
+                        e.clientX,
+                        e.currentTarget.getBoundingClientRect(),
+                        url,
+                        alt,
+                      ),
+                    )
+                  }
+                  onMouseLeave={() => setPreview(null)}
                 >
                   {/* Only mount the image once the tile nears the viewport, so
                       off-screen thumbnails are never requested; it fades in on
@@ -219,6 +281,22 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
                       }}
                     />
                   ) : null}
+                  {/* Filename caption, absolutely positioned below the tile so
+                      it never affects the grid layout (nothing jumps); revealed
+                      on hover via the tile's `group`. */}
+                  <span
+                    className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 -translate-x-1/2 whitespace-nowrap bg-white px-2 py-1 text-sm text-black opacity-0 transition-opacity group-hover:opacity-100"
+                    style={{
+                      fontFamily:
+                        '"Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif',
+                      // Graphik-Black is a single-weight face registered at 400;
+                      // keep the weight normal so the browser doesn't
+                      // synthetically bold it.
+                      fontWeight: 400,
+                    }}
+                  >
+                    {`KM_${fileNameOf(url)}`}
+                  </span>
                 </li>
               );
             })}
@@ -227,27 +305,6 @@ export default function Grid({ posts }: { posts: PostListItem[] | null }) {
           <p className="text-sm text-zinc-600">No posts yet.</p>
         )}
       </main>
-
-      {/* Hover caption: the filename pinned bottom-right, in the intro's title
-          style. */}
-      {caption ? (
-        <div className="pointer-events-none fixed bottom-0 right-0 z-40 p-5">
-          <span
-            className="text-right text-black"
-            style={{
-              fontFamily:
-                '"Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif',
-              fontSize: 50,
-              // Graphik-Black is a single-weight face registered at 400; keep the
-              // weight normal so the browser doesn't synthetically bold it.
-              fontWeight: 400,
-              lineHeight: 1,
-            }}
-          >
-            {`KM_${caption}`}
-          </span>
-        </div>
-      ) : null}
 
       {/* Hover preview: the full image, placed where the cursor entered the tile.
           Non-interactive so it never steals the mouse from the tiles beneath.

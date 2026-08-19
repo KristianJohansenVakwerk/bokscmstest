@@ -9,9 +9,13 @@ export default function SiteNav() {
   const { mode, setMode } = useView();
 
   return (
-    <select value={mode} onChange={(e) => setMode(e.target.value as ViewMode)}>
+    <select
+      value={mode}
+      onChange={(e) => setMode(e.target.value as ViewMode)}
+      className="h-8 text-sm focus:outline-none"
+    >
       <option value="intro" disabled hidden>
-        Menu
+        KM
       </option>
       <option value="index">Index</option>
       <option value="contact">Contact</option>
