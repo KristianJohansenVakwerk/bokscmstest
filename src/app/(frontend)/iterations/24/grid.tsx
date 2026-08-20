@@ -129,8 +129,8 @@ export default function Grid({
   hideThumbs = false,
 }: {
   posts: PostListItem[] | null;
-  // When true (the wordmark intro), tiles render blank — no thumbnail, no
-  // background fill — but stay hoverable so the big preview still works.
+  // When true (the wordmark intro), tiles hide the photo but keep their backdrop
+  // fill colour, and stay hoverable so the big preview still works.
   hideThumbs?: boolean;
 }) {
   // True aspect ratio (w/h) per image url, learned once each thumbnail loads —
@@ -398,10 +398,14 @@ export default function Grid({
                   className="group relative h-[69px] shrink-0 cursor-pointer"
                   style={{
                     aspectRatio: aspect,
-                    // Blank while the intro hides thumbnails, so the tile shows
-                    // nothing until it's hovered (the big preview) or revealed.
+                    // During the intro every tile is blank EXCEPT the active one
+                    // (hovered, or the tile the idle loop is on) — it shows its
+                    // backdrop fill colour, tying the small grid mark to the big
+                    // preview. Outside the intro tiles keep their colour as usual.
                     backgroundColor: hideThumbs
-                      ? undefined
+                      ? preview?.url === url
+                        ? (post.backgroundColor ?? undefined)
+                        : undefined
                       : (post.backgroundColor ?? undefined),
                   }}
                   onMouseEnter={(e) => {
