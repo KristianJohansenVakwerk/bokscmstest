@@ -27,7 +27,7 @@ const PRELOAD_MARGIN = "300px 0px";
 
 // Idle auto-loop (intro only): after this long without mouse movement, cycle the
 // big preview through every image, advancing one every LOOP_STEP_MS.
-const IDLE_MS = 5000;
+const IDLE_MS = 2000;
 const LOOP_STEP_MS = 1400;
 
 // Caption geometry, mirrored from the tile's caption span below — the hover
@@ -271,8 +271,10 @@ export default function Grid({
     // When the preview's vertical span would cross the caption's row, keep it
     // clear of the label: stay on the preferred side if it fits, else flip to
     // the other side, else drop it below/above the caption. This guarantees the
-    // big image never sits on top of the caption.
-    if (y < capBottom && y + h > capTop) {
+    // big image never sits on top of the caption. Skipped during the intro,
+    // where no caption is rendered — otherwise the preview dodges a label that
+    // isn't there and snaps to a viewport edge (top-left/right).
+    if (!hideThumbs && y < capBottom && y + h > capTop) {
       const preferX = onLeftHalf ? capAwareRight : capAwareLeft;
       const otherX = onLeftHalf ? capAwareLeft : capAwareRight;
       const fitsOnScreen = (candidate: number) =>
@@ -398,14 +400,11 @@ export default function Grid({
                   className="group relative h-[69px] shrink-0 cursor-pointer"
                   style={{
                     aspectRatio: aspect,
-                    // During the intro every tile is blank EXCEPT the active one
-                    // (hovered, or the tile the idle loop is on) — it shows its
-                    // backdrop fill colour, tying the small grid mark to the big
-                    // preview. Outside the intro tiles keep their colour as usual.
+                    // During the intro every tile stays blank — only the big
+                    // preview shows, nothing appears in the grid itself. Outside
+                    // the intro tiles keep their backdrop colour as usual.
                     backgroundColor: hideThumbs
-                      ? preview?.url === url
-                        ? (post.backgroundColor ?? undefined)
-                        : undefined
+                      ? undefined
                       : (post.backgroundColor ?? undefined),
                   }}
                   onMouseEnter={(e) => {
