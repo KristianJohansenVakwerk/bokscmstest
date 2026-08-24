@@ -49,7 +49,7 @@ export default function Intro({ posts }: { posts: PostListItem[] | null }) {
 
   return (
     <div
-      className={`relative flex flex-1 flex-col bg-white ${
+      className={`relative flex flex-1 flex-col bg-zinc-50 ${
         introActive ? "cursor-pointer" : ""
       }`}
       // The wordmark overlay is click-through (pointer-events-none), so the

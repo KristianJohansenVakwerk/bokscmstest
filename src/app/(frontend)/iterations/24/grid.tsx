@@ -28,7 +28,7 @@ const PRELOAD_MARGIN = "300px 0px";
 // Idle auto-loop (intro only): after this long without mouse movement, cycle the
 // big preview through every image, advancing one every LOOP_STEP_MS.
 const IDLE_MS = 5000;
-const LOOP_STEP_MS = 1400;
+const LOOP_STEP_MS = 1050; // ~25% faster than the original 1400ms
 
 // Caption geometry, mirrored from the tile's caption span below — the hover
 // preview uses it to steer clear of the label so it never covers it.
@@ -177,6 +177,9 @@ export default function Grid({
   const tilesRef = useRef<Set<Element>>(new Set());
   // Tile elements by id, so the idle auto-loop can locate each tile in order.
   const tileEls = useRef<Map<string, HTMLLIElement>>(new Map());
+  // Index of the last tile shown (by hover or by the loop) so the idle loop
+  // resumes from where the user left off rather than restarting at the top-left.
+  const lastIndexRef = useRef(0);
 
   // One shared observer for the whole grid. It reveals a tile the first time it
   // nears the viewport, then stops watching it (each image loads once).
@@ -339,10 +342,13 @@ export default function Grid({
 
     const start = () => {
       looping = true;
-      let i = 0;
-      showAt(i); // top-left first
+      // Resume from the last tile the user hovered (or where the loop stopped),
+      // defaulting to the top-left on first run.
+      let i = lastIndexRef.current % slides.length;
+      showAt(i);
       loop = window.setInterval(() => {
         i = (i + 1) % slides.length;
+        lastIndexRef.current = i;
         showAt(i);
       }, LOOP_STEP_MS);
     };
@@ -374,11 +380,11 @@ export default function Grid({
   }, [hideThumbs, slides]);
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-x-clip bg-white font-sans">
+    <div className="relative flex flex-1 flex-col overflow-x-clip bg-zinc-50 font-sans">
       <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-14">
         {slides.length > 0 ? (
           <ul className="flex flex-wrap items-center justify-center gap-20">
-            {slides.map((post) => {
+            {slides.map((post, index) => {
               const id = String(post.id);
               const url = post.imageUrl!;
               const alt = post.imageAlt ?? post.title;
@@ -420,6 +426,8 @@ export default function Grid({
                       ),
                     );
                     setCaptionShift({ id, dx: captionShiftFor(rect, url) });
+                    // Remember this tile so the idle loop resumes from here.
+                    lastIndexRef.current = index;
                   }}
                   onMouseLeave={() => {
                     setPreview(null);
