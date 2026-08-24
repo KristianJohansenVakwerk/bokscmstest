@@ -449,7 +449,12 @@ export default function Grid({
                       ? undefined
                       : (post.backgroundColor ?? undefined),
                   }}
-                  onMouseEnter={(e) => {
+                  onPointerEnter={(e) => {
+                    // Hover-to-open is MOUSE ONLY. On touch a tap synthesizes a
+                    // pointerenter too, which would open the preview and then let
+                    // the same tap's click land on it and dismiss it — the flicker.
+                    // Touch/pen open via onClick instead.
+                    if (e.pointerType !== "mouse") return;
                     const rect = e.currentTarget.getBoundingClientRect();
                     setPreview(
                       previewAt(
@@ -465,7 +470,8 @@ export default function Grid({
                     lastIndexRef.current = index;
                     openedAtRef.current = Date.now();
                   }}
-                  onMouseLeave={() => {
+                  onPointerLeave={(e) => {
+                    if (e.pointerType !== "mouse") return;
                     setPreview(null);
                     setCaptionShift(null);
                   }}
