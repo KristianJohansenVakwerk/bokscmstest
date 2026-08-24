@@ -49,7 +49,7 @@ export default function Intro({ posts }: { posts: PostListItem[] | null }) {
 
   return (
     <div
-      className={`relative flex flex-1 flex-col bg-zinc-50 ${
+      className={`relative flex flex-1 flex-col bg-[#f3f3f3] ${
         introActive ? "cursor-pointer" : ""
       }`}
       // The wordmark overlay is click-through (pointer-events-none), so the
@@ -99,15 +99,16 @@ export default function Intro({ posts }: { posts: PostListItem[] | null }) {
         // the mouse reaches the grid tiles beneath and hover previews still fire;
         // the click itself is handled on the wrapper above. z-[60] keeps the name
         // ON TOP of the big preview images (z-50) as they reveal on hover/loop.
-        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center">
+        <div className="pointer-events-none fixed inset-0 z-[60] flex items-center justify-center overflow-hidden">
           {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* On mobile the wordmark is rotated 90° so it runs top-to-bottom and
+              fills the tall screen (width tracks the viewport HEIGHT); on sm+ it
+              lies flat across the viewport width as before. */}
           <img
             src="/karl-logo.svg"
             alt="Karl Monies"
-            className="pointer-events-none transition-opacity ease-out"
+            className="pointer-events-none h-auto w-[calc(100vh-60px)] max-w-none rotate-90 transition-opacity ease-out sm:w-[calc(100vw-60px)] sm:rotate-0"
             style={{
-              width: "calc(100vw - 60px)",
-              height: "auto",
               opacity: mode === "index" ? 0 : 1,
               transitionDuration: `${LOGO_FADE_MS}ms`,
             }}

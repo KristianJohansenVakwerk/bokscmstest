@@ -59,11 +59,20 @@ type Preview = {
 
 // The big hover image. Its box is painted with the tile's backdrop colour so a
 // solid fill shows immediately; the image then fades in over it once decoded.
-function PreviewImage({ preview }: { preview: Preview }) {
+// On mobile it's tappable to dismiss (pointer-events-auto + onClick); on desktop
+// it stays click-through so hover keeps working.
+function PreviewImage({
+  preview,
+  onDismiss,
+}: {
+  preview: Preview;
+  onDismiss: () => void;
+}) {
   const [loaded, setLoaded] = useState(false);
   return (
     <div
-      className="pointer-events-none fixed z-50"
+      className="pointer-events-auto fixed z-50 sm:pointer-events-none"
+      onClick={onDismiss}
       style={{
         left: preview.x,
         top: preview.y,
@@ -380,7 +389,7 @@ export default function Grid({
   }, [hideThumbs, slides]);
 
   return (
-    <div className="relative flex flex-1 flex-col overflow-x-clip bg-zinc-50 font-sans">
+    <div className="relative flex flex-1 flex-col overflow-x-clip bg-[#f3f3f3] font-sans">
       <main className="flex w-full flex-1 flex-col px-5 pb-5 pt-14">
         {slides.length > 0 ? (
           <ul className="flex flex-wrap items-center justify-center gap-20">
@@ -401,7 +410,7 @@ export default function Grid({
                   key={id}
                   ref={setTileRef}
                   data-id={id}
-                  className="group relative h-[69px] shrink-0 cursor-pointer"
+                  className="group relative h-[69px] shrink-0 cursor-zoom-in"
                   style={{
                     aspectRatio: aspect,
                     // During the intro every tile stays blank — only the big
@@ -430,6 +439,24 @@ export default function Grid({
                     setPreview(null);
                     setCaptionShift(null);
                   }}
+                  onClick={(e) => {
+                    // During the intro let the click bubble to the wrapper (which
+                    // enters the grid). In the grid, tapping a tile shows its big
+                    // preview — this is how mobile (no hover) opens an image.
+                    if (hideThumbs) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setPreview(
+                      previewAt(
+                        e.clientX,
+                        rect,
+                        url,
+                        alt,
+                        post.backgroundColor,
+                      ),
+                    );
+                    setCaptionShift({ id, dx: captionShiftFor(rect, url) });
+                    lastIndexRef.current = index;
+                  }}
                 >
                   {/* Only mount the image once the tile nears the viewport, so
                       off-screen thumbnails are never requested; it fades in on
@@ -454,10 +481,11 @@ export default function Grid({
                   {/* Filename caption, absolutely positioned below the tile so
                       it never affects the grid layout (nothing jumps); revealed
                       on hover via the tile's `group`. Suppressed during the intro
-                      so only the wordmark and the big preview show. */}
+                      so only the wordmark and the big preview show. Desktop only —
+                      on mobile the caption sits under the big preview instead. */}
                   {hideThumbs ? null : (
                     <span
-                      className="pointer-events-none absolute left-1/2 top-full z-[55] mt-2 whitespace-nowrap bg-white px-2 py-1 text-sm text-black opacity-0 transition-opacity group-hover:opacity-100"
+                      className="pointer-events-none absolute left-1/2 top-full z-[55] mt-2 hidden whitespace-nowrap bg-white px-2 py-1 text-sm text-black opacity-0 transition-opacity group-hover:opacity-100 sm:block"
                       style={{
                         fontFamily:
                           '"Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif',
@@ -490,7 +518,37 @@ export default function Grid({
           ~1920px on retina) — plenty sharp for a hover glimpse and much faster
           for the optimizer to generate and transfer. Keyed by url so its
           load/fade state resets for each new image. */}
-      {preview ? <PreviewImage key={preview.url} preview={preview} /> : null}
+      {preview ? (
+        <PreviewImage
+          key={preview.url}
+          preview={preview}
+          onDismiss={() => setPreview(null)}
+        />
+      ) : null}
+
+      {/* Mobile caption: sits centered under the big preview image (rather than
+          under the tiny grid tile). Mobile only; hidden during the intro. */}
+      {preview && !hideThumbs ? (
+        <div
+          className="pointer-events-none fixed z-[55] flex justify-center sm:hidden"
+          style={{
+            left: preview.x,
+            top: preview.y + preview.h + CAPTION_GAP,
+            width: preview.w,
+          }}
+        >
+          <span
+            className="whitespace-nowrap bg-white px-2 py-1 text-sm text-black"
+            style={{
+              fontFamily:
+                '"Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif',
+              fontWeight: 400,
+            }}
+          >
+            {`KM_${fileNameOf(preview.url)}`}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -8,6 +8,9 @@ import { useView, type ViewMode } from "./view-context";
 export default function SiteNav() {
   const { mode, setMode } = useView();
 
+  // The menu only appears once the visitor has clicked past the wordmark intro.
+  if (mode === "intro") return null;
+
   return (
     <select
       value={mode}
