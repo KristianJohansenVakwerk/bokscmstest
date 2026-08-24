@@ -27,7 +27,7 @@ const PRELOAD_MARGIN = "300px 0px";
 
 // Idle auto-loop (intro only): after this long without mouse movement, cycle the
 // big preview through every image, advancing one every LOOP_STEP_MS.
-const IDLE_MS = 5000;
+const IDLE_MS = 2000;
 const LOOP_STEP_MS = 1050; // ~25% faster than the original 1400ms
 
 // Caption geometry, mirrored from the tile's caption span below — the hover
@@ -271,11 +271,15 @@ export default function Grid({
     let x = onLeftHalf ? plainRight : plainLeft;
     let y = (vh - h) / 2;
 
-    // When the preview's vertical span would cross the caption's row, keep it
-    // clear of the label: stay on the preferred side if it fits, else flip to
-    // the other side, else drop it below/above the caption. This guarantees the
-    // big image never sits on top of the caption.
-    if (y < capBottom && y + h > capTop) {
+    // When the preview's vertical span would cross the caption's row, sit it
+    // clear of the label HORIZONTALLY: preferred side if it fits, else flip to
+    // the other side. If the image is too wide to clear the caption on either
+    // side, leave it on the preferred side, vertically centered — the caption
+    // is raised above the preview (z-index) so it stays legible over it. We no
+    // longer drop the image above/below the caption, which snapped it to a
+    // viewport corner for tiles high or low on screen. Skipped during the
+    // intro, where no caption is rendered, so the preview stays centered.
+    if (!hideThumbs && y < capBottom && y + h > capTop) {
       const preferX = onLeftHalf ? capAwareRight : capAwareLeft;
       const otherX = onLeftHalf ? capAwareLeft : capAwareRight;
       const fitsOnScreen = (candidate: number) =>
@@ -284,10 +288,6 @@ export default function Grid({
         x = preferX;
       } else if (fitsOnScreen(otherX)) {
         x = otherX;
-      } else if (capBottom + CAPTION_CLEARANCE + h + EDGE_MARGIN <= vh) {
-        y = capBottom + CAPTION_CLEARANCE;
-      } else {
-        y = capTop - CAPTION_CLEARANCE - h;
       }
     } else if (onLeftHalf && x + w + EDGE_MARGIN > vw) {
       x = plainLeft; // preferred right side overflows → flip left
@@ -404,14 +404,11 @@ export default function Grid({
                   className="group relative h-[69px] shrink-0 cursor-pointer"
                   style={{
                     aspectRatio: aspect,
-                    // During the intro every tile is blank EXCEPT the active one
-                    // (hovered, or the tile the idle loop is on) — it shows its
-                    // backdrop fill colour, tying the small grid mark to the big
-                    // preview. Outside the intro tiles keep their colour as usual.
+                    // During the intro every tile stays blank — only the big
+                    // preview shows, nothing appears in the grid itself. Outside
+                    // the intro tiles keep their backdrop colour as usual.
                     backgroundColor: hideThumbs
-                      ? preview?.url === url
-                        ? (post.backgroundColor ?? undefined)
-                        : undefined
+                      ? undefined
                       : (post.backgroundColor ?? undefined),
                   }}
                   onMouseEnter={(e) => {
@@ -460,7 +457,7 @@ export default function Grid({
                       so only the wordmark and the big preview show. */}
                   {hideThumbs ? null : (
                     <span
-                      className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 whitespace-nowrap bg-white px-2 py-1 text-sm text-black opacity-0 transition-opacity group-hover:opacity-100"
+                      className="pointer-events-none absolute left-1/2 top-full z-[55] mt-2 whitespace-nowrap bg-white px-2 py-1 text-sm text-black opacity-0 transition-opacity group-hover:opacity-100"
                       style={{
                         fontFamily:
                           '"Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif',
