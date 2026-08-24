@@ -30,6 +30,10 @@ const PRELOAD_MARGIN = "300px 0px";
 const IDLE_MS = 2000;
 const LOOP_STEP_MS = 1050; // ~25% faster than the original 1400ms
 
+// Candidate widths for the big preview's srcSet — a subset of Next's default
+// deviceSizes (only those values are accepted by the /_next/image optimizer).
+const PREVIEW_SRC_WIDTHS = [640, 750, 828, 1080, 1200, 1920];
+
 // Caption geometry, mirrored from the tile's caption span below — the hover
 // preview uses it to steer clear of the label so it never covers it.
 const CAPTION_FONT =
@@ -59,19 +63,25 @@ type Preview = {
 
 // The big hover image. Its box is painted with the tile's backdrop colour so a
 // solid fill shows immediately; the image then fades in over it once decoded.
-// On mobile it's tappable to dismiss (pointer-events-auto + onClick); on desktop
-// it stays click-through so hover keeps working.
+// In the grid it's tappable to dismiss on mobile (pointer-events-auto + onClick);
+// on desktop it stays click-through so hover works. During the intro
+// (`interactive` false) it's always click-through so taps fall through to enter
+// the grid rather than dismissing the preview.
 function PreviewImage({
   preview,
+  interactive,
   onDismiss,
 }: {
   preview: Preview;
+  interactive: boolean;
   onDismiss: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   return (
     <div
-      className="pointer-events-auto fixed z-50 sm:pointer-events-none"
+      className={`fixed z-50 sm:pointer-events-none ${
+        interactive ? "pointer-events-auto" : "pointer-events-none"
+      }`}
       onClick={onDismiss}
       style={{
         left: preview.x,
@@ -81,9 +91,18 @@ function PreviewImage({
         backgroundColor: preview.bg ?? "#f4f4f5",
       }}
     >
+      {/* Responsive: a srcSet across Next's allowed widths plus `sizes` set to the
+          preview's actual rendered width lets the browser fetch only what the box
+          needs (× DPR) instead of a fixed 1080 on every device — much lighter on
+          mobile, where the preview box is small. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={`/_next/image?url=${encodeURIComponent(preview.url)}&w=1080&q=75`}
+        srcSet={PREVIEW_SRC_WIDTHS.map(
+          (w) =>
+            `/_next/image?url=${encodeURIComponent(preview.url)}&w=${w}&q=75 ${w}w`,
+        ).join(", ")}
+        sizes={`${Math.round(preview.w)}px`}
         alt={preview.alt}
         fetchPriority="high"
         onLoad={() => setLoaded(true)}
@@ -189,6 +208,16 @@ export default function Grid({
   // Index of the last tile shown (by hover or by the loop) so the idle loop
   // resumes from where the user left off rather than restarting at the top-left.
   const lastIndexRef = useRef(0);
+  // When the preview was last opened. On touch, tapping a tile opens the preview
+  // and the same tap's trailing click can land on the (now on-screen, tappable)
+  // preview and dismiss it instantly — a flicker. We ignore dismiss clicks that
+  // arrive within this window of opening so only a deliberate second tap closes.
+  const openedAtRef = useRef(0);
+  const OPEN_GUARD_MS = 400;
+  const dismissPreview = () => {
+    if (Date.now() - openedAtRef.current < OPEN_GUARD_MS) return;
+    setPreview(null);
+  };
 
   // One shared observer for the whole grid. It reveals a tile the first time it
   // nears the viewport, then stops watching it (each image loads once).
@@ -434,6 +463,7 @@ export default function Grid({
                     setCaptionShift({ id, dx: captionShiftFor(rect, url) });
                     // Remember this tile so the idle loop resumes from here.
                     lastIndexRef.current = index;
+                    openedAtRef.current = Date.now();
                   }}
                   onMouseLeave={() => {
                     setPreview(null);
@@ -456,6 +486,7 @@ export default function Grid({
                     );
                     setCaptionShift({ id, dx: captionShiftFor(rect, url) });
                     lastIndexRef.current = index;
+                    openedAtRef.current = Date.now();
                   }}
                 >
                   {/* Only mount the image once the tile nears the viewport, so
@@ -522,7 +553,8 @@ export default function Grid({
         <PreviewImage
           key={preview.url}
           preview={preview}
-          onDismiss={() => setPreview(null)}
+          interactive={!hideThumbs}
+          onDismiss={dismissPreview}
         />
       ) : null}
 
