@@ -28,11 +28,31 @@ const PRELOAD_MARGIN = "300px 0px";
 // Idle auto-loop (intro only): after this long without mouse movement, cycle the
 // big preview through every image, advancing one every LOOP_STEP_MS.
 const IDLE_MS = 2000;
-const LOOP_STEP_MS = 1050; // ~25% faster than the original 1400ms
+// How long each slide is held ON SCREEN once it has actually painted, before the
+// loop advances. Timed from the image's load event (not a blind interval), so a
+// slow-loading image is still shown in full and the cadence stays constant.
+const LOOP_STEP_MS = 1050;
+// Safety cap: if a slide's load event never reaches the loop (decode error or a
+// missing tile), advance anyway after this rather than stalling on one image.
+const MAX_LOAD_MS = 4000;
 
 // Candidate widths for the big preview's srcSet — a subset of Next's default
 // deviceSizes (only those values are accepted by the /_next/image optimizer).
 const PREVIEW_SRC_WIDTHS = [640, 750, 828, 1080, 1200, 1920];
+
+// The width the preview's <img> will actually request for a box `boxW` CSS px
+// wide: the smallest srcSet candidate at least as large as the box × DPR, which
+// mirrors how the browser resolves srcSet/sizes. The idle loop uses this to
+// preload the EXACT resource the next slide needs, so it's cached before the
+// loop advances to it (no backdrop flash on the hand-off).
+function previewWidthFor(boxW: number) {
+  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  const need = boxW * dpr;
+  return (
+    PREVIEW_SRC_WIDTHS.find((w) => w >= need) ??
+    PREVIEW_SRC_WIDTHS[PREVIEW_SRC_WIDTHS.length - 1]
+  );
+}
 
 // Caption geometry, mirrored from the tile's caption span below — the hover
 // preview uses it to steer clear of the label so it never covers it.
@@ -71,10 +91,14 @@ function PreviewImage({
   preview,
   interactive,
   onDismiss,
+  onLoaded,
 }: {
   preview: Preview;
   interactive: boolean;
   onDismiss: () => void;
+  // Fires (with the image url) the moment the full-size image paints — or errors
+  // — so the idle loop can wait for the current slide before advancing.
+  onLoaded?: (url: string) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   return (
@@ -105,7 +129,12 @@ function PreviewImage({
         sizes={`${Math.round(preview.w)}px`}
         alt={preview.alt}
         fetchPriority="high"
-        onLoad={() => setLoaded(true)}
+        onLoad={() => {
+          setLoaded(true);
+          onLoaded?.(preview.url);
+        }}
+        // Treat a failed load as "ready" too, so the loop never stalls on it.
+        onError={() => onLoaded?.(preview.url)}
         className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ease-out ${
           loaded ? "opacity-100" : "opacity-0"
         }`}
@@ -218,6 +247,15 @@ export default function Grid({
     if (Date.now() - openedAtRef.current < OPEN_GUARD_MS) return;
     setPreview(null);
   };
+
+  // Bridges the big preview's load event back to the idle loop: while looping,
+  // the effect parks a resolver here and PreviewImage calls it once the current
+  // image has painted, so the loop advances only after each slide is on screen.
+  // Null (and a no-op) whenever the loop isn't running, e.g. during hover.
+  const previewLoadedRef = useRef<((url: string) => void) | null>(null);
+  const handlePreviewLoaded = useCallback((url: string) => {
+    previewLoadedRef.current?.(url);
+  }, []);
 
   // One shared observer for the whole grid. It reveals a tile the first time it
   // nears the viewport, then stops watching it (each image loads once).
@@ -353,7 +391,8 @@ export default function Grid({
     if (!hideThumbs || slides.length === 0) return;
 
     let idle: number | undefined;
-    let loop: number | undefined;
+    let hold: number | undefined;
+    let fallback: number | undefined;
     let looping = false;
 
     const showAt = (i: number) => {
@@ -372,23 +411,73 @@ export default function Grid({
       );
     };
 
+    // Warm the browser cache for slide `i`'s preview — the exact width the <img>
+    // will pick — so when the loop advances to it, it paints from cache almost
+    // immediately instead of flashing the backdrop fill on the hand-off.
+    const preload = (i: number) => {
+      const post = slides[i];
+      const el = post && tileEls.current.get(String(post.id));
+      if (!el || !post.imageUrl) return;
+      const rect = el.getBoundingClientRect();
+      const box = previewAt(
+        rect.left + rect.width / 2,
+        rect,
+        post.imageUrl,
+        post.imageAlt ?? post.title,
+        post.backgroundColor,
+      );
+      const w = previewWidthFor(box.w);
+      const img = new window.Image();
+      img.src = `/_next/image?url=${encodeURIComponent(post.imageUrl)}&w=${w}&q=75`;
+    };
+
+    const clearStep = () => {
+      if (hold) window.clearTimeout(hold);
+      if (fallback) window.clearTimeout(fallback);
+      hold = undefined;
+      fallback = undefined;
+      previewLoadedRef.current = null;
+    };
+
     const stop = () => {
-      if (loop) window.clearInterval(loop);
-      loop = undefined;
+      clearStep();
       looping = false;
+    };
+
+    // Show slide `index`, then advance to the next only once THIS image has
+    // painted — holding it on screen for LOOP_STEP_MS after it appears. The
+    // cadence is measured from when the image is actually visible (constant, no
+    // flicker), not from a blind interval that races the network and leaves the
+    // backdrop showing. The next slide is preloaded during the hold so it's
+    // ready the instant we advance.
+    const step = (index: number) => {
+      if (!looping) return;
+      lastIndexRef.current = index;
+      showAt(index);
+      preload((index + 1) % slides.length);
+
+      const url = slides[index].imageUrl!;
+      const goNext = () => {
+        clearStep();
+        step((index + 1) % slides.length);
+      };
+      // Park a resolver the current preview calls once it paints; then hold the
+      // image for the step before advancing.
+      previewLoadedRef.current = (loadedUrl) => {
+        if (loadedUrl !== url) return;
+        previewLoadedRef.current = null;
+        hold = window.setTimeout(goNext, LOOP_STEP_MS);
+      };
+      // Never stall if the load event doesn't arrive (error, or a cache hit that
+      // fired before the resolver was parked).
+      fallback = window.setTimeout(goNext, MAX_LOAD_MS + LOOP_STEP_MS);
     };
 
     const start = () => {
       looping = true;
       // Resume from the last tile the user hovered (or where the loop stopped),
       // defaulting to the top-left on first run.
-      let i = lastIndexRef.current % slides.length;
-      showAt(i);
-      loop = window.setInterval(() => {
-        i = (i + 1) % slides.length;
-        lastIndexRef.current = i;
-        showAt(i);
-      }, LOOP_STEP_MS);
+      step(lastIndexRef.current % slides.length);
     };
 
     const arm = () => {
@@ -406,6 +495,8 @@ export default function Grid({
 
     window.addEventListener("mousemove", onMove);
     arm(); // no movement yet — start the idle countdown right away
+    // Warm the first slide during the idle countdown so even it shows promptly.
+    preload(lastIndexRef.current % slides.length);
 
     return () => {
       window.removeEventListener("mousemove", onMove);
@@ -561,6 +652,7 @@ export default function Grid({
           preview={preview}
           interactive={!hideThumbs}
           onDismiss={dismissPreview}
+          onLoaded={handlePreviewLoaded}
         />
       ) : null}
 
