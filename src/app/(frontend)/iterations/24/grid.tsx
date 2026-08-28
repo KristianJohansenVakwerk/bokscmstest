@@ -522,7 +522,7 @@ export default function Grid({
                       on mobile the caption sits under the big preview instead. */}
                   {hideThumbs ? null : (
                     <span
-                      className="pointer-events-none absolute left-1/2 top-full z-[55] mt-2 hidden whitespace-nowrap bg-white px-2 py-1 text-sm text-black opacity-0 transition-opacity group-hover:opacity-100 sm:block"
+                      className="pointer-events-none absolute left-1/2 top-full z-[55] mt-2 hidden whitespace-nowrap px-2 py-1 text-sm text-black opacity-0 transition-opacity group-hover:opacity-100 sm:block"
                       style={{
                         fontFamily:
                           '"Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif',
@@ -576,7 +576,7 @@ export default function Grid({
           }}
         >
           <span
-            className="whitespace-nowrap bg-white px-2 py-1 text-sm text-black"
+            className="whitespace-nowrap px-2 py-1 text-sm text-black"
             style={{
               fontFamily:
                 '"Graphik-Black", "Helvetica Neue", Helvetica, Arial, sans-serif',
