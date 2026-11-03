@@ -1,20 +1,52 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
+
 import { useView, type ViewMode } from "./view-context";
 
-// Global site nav: switches the active view between the index (thumbnail grid)
-// and contact. "intro" is the wordmark landing shown before either is picked —
-// it's the placeholder label and can't be re-selected once left.
+// Global site nav.
+//
+// On the final site it's route-based: "KM" goes to the landing page, "Index"
+// goes to /mosaic, and "Contact" opens the global contact overlay on top of the
+// current page.
+//
+// On /iterations pages it keeps the old in-page behaviour, switching `mode`.
 export default function SiteNav() {
-  const { mode, setMode } = useView();
+  const pathname = usePathname();
+  const router = useRouter();
+  const { mode, setMode, contactOpen, setContactOpen } = useView();
+  const inIterations = pathname.startsWith("/iterations");
 
-  // The menu only appears once the visitor has clicked past the wordmark intro.
-  if (mode === "intro") return null;
+  const value: ViewMode = inIterations
+    ? mode
+    : contactOpen
+      ? "contact"
+      : pathname === "/mosaic"
+        ? "index"
+        : "intro";
+
+  const onChange = (next: ViewMode) => {
+    if (inIterations) {
+      setMode(next);
+      return;
+    }
+    if (next === "contact") {
+      setContactOpen(true);
+      return;
+    }
+    setContactOpen(false);
+    if (next === "index" && pathname !== "/mosaic") router.push("/mosaic");
+    if (next === "intro" && pathname !== "/") router.push("/");
+  };
+
+  // On /iterations the menu only appears once the visitor has clicked past the
+  // wordmark intro. The final site always shows it (`mode` isn't used there).
+  if (inIterations && mode === "intro") return null;
 
   return (
     <select
-      value={mode}
-      onChange={(e) => setMode(e.target.value as ViewMode)}
+      value={value}
+      onChange={(e) => onChange(e.target.value as ViewMode)}
       className="h-8 text-sm focus:outline-none"
       style={{
         fontFamily:
@@ -24,7 +56,9 @@ export default function SiteNav() {
         fontWeight: 400,
       }}
     >
-      <option value="intro" disabled hidden>
+      {/* On the final site KM goes back to the landing page; on /iterations it
+          stays a placeholder label that can't be re-selected. */}
+      <option value="intro" disabled={inIterations} hidden={inIterations}>
         KM
       </option>
       <option value="index">Index</option>

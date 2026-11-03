@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import React from "react";
 
 import "./globals.css";
+import ContactOverlay from "./contact-overlay";
 import SiteNav from "./site-nav";
 import { ViewProvider } from "./view-context";
 
@@ -57,6 +58,7 @@ export default function FrontendLayout({
             </span>
           </div>
           {children}
+          <ContactOverlay />
         </ViewProvider>
       </body>
     </html>
