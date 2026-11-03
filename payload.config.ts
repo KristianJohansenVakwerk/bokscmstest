@@ -82,6 +82,10 @@ export default buildConfig({
       ),
     },
     {
+      key: "delete:media:orphaned",
+      scriptPath: path.resolve(dirname, "scripts/bin/delete-orphaned-media.cjs"),
+    },
+    {
       key: "import:sqlite",
       scriptPath: path.resolve(dirname, "scripts/bin/import-to-sqlite.cjs"),
     },

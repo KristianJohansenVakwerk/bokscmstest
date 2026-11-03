@@ -154,27 +154,56 @@ async function deleteOrphanedMedia(payload: PayloadInstance) {
   let kept = 0;
   let errors = 0;
 
-  let page = 1;
-  while (true) {
+  // Collect every media id a post references, then delete the rest. Reading the
+  // posts once avoids a "still used?" query per media doc.
+  const used = new Set<string>();
+  let postCount = 0;
+  for (let page = 1; ; page += 1) {
+    const result = await payload.find({
+      collection: "posts",
+      depth: 0,
+      limit: 500,
+      page,
+      overrideAccess: true,
+    });
+
+    for (const post of result.docs as Array<{ image?: unknown }>) {
+      postCount += 1;
+      if (post.image != null) used.add(String(post.image));
+    }
+
+    if (!result.hasNextPage) break;
+  }
+
+  // Guard against wiping every image if the posts query comes back empty.
+  if (postCount === 0) return { deleted, kept, errors, skipped: "No posts found" };
+
+  const orphanIds: string[] = [];
+  for (let page = 1; ; page += 1) {
     const mediaPage = await payload.find({
       collection: "media",
-      limit: 100,
+      depth: 0,
+      limit: 500,
       page,
       overrideAccess: true,
     });
 
     for (const doc of mediaPage.docs as Array<{ id: unknown }>) {
-      try {
-        const didDelete = await deleteMediaIfOrphaned(payload, String(doc.id));
-        if (didDelete) deleted += 1;
-        else kept += 1;
-      } catch {
-        errors += 1;
-      }
+      if (used.has(String(doc.id))) kept += 1;
+      else orphanIds.push(String(doc.id));
     }
 
     if (!mediaPage.hasNextPage) break;
-    page += 1;
+  }
+
+  // Deleting while paging would shift later pages, so delete after listing.
+  for (const id of orphanIds) {
+    try {
+      await payload.delete({ collection: "media", id, overrideAccess: true });
+      deleted += 1;
+    } catch {
+      errors += 1;
+    }
   }
 
   return { deleted, kept, errors };
@@ -289,7 +318,8 @@ export async function POST(request: Request) {
   const limit = Math.max(0, Number(searchParams.get("limit") ?? "0"));
   const onlyNew = (searchParams.get("onlyNew") ?? "true") !== "false";
   const deleteMissing = (searchParams.get("deleteMissing") ?? "true") !== "false";
-  const gcOrphanedMedia = (searchParams.get("gcOrphanedMedia") ?? "false") === "true";
+  // On by default so repeated syncs don't pile up unused uploads.
+  const gcOrphanedMedia = (searchParams.get("gcOrphanedMedia") ?? "true") !== "false";
 
   try {
     const payload = await getPayload({ config });
@@ -352,10 +382,12 @@ export async function POST(request: Request) {
         continue;
       }
 
+      let uploadedMediaId: string | null = null;
       try {
         const fileBuffer = await downloadDropboxFile(pathLower);
         const titleBase = stripExtension(name);
         const media = await uploadImageToMedia(payload, fileBuffer, name, titleBase);
+        uploadedMediaId = String(media.id);
 
         if (existing) {
           const previousMediaId =
@@ -419,6 +451,12 @@ export async function POST(request: Request) {
           mediaId: String(media.id),
         });
       } catch (error) {
+        // The upload succeeded but the post create/update didn't — drop the
+        // upload rather than leave it orphaned.
+        if (uploadedMediaId) {
+          await deleteMediaIfOrphaned(payload, uploadedMediaId).catch(() => {});
+        }
+
         if (existing && isDropboxNotFoundError(error)) {
           const { deletedMedia } = await deletePostAndOrphanedMedia(
             payload,
